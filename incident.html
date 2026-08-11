@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Log an Incident — Hornbill Tactical Incident Portal</title>
+<meta name="description" content="Report a security incident to the Hornbill Tactical control room. Secure, timestamped incident logging with severity triage and evidence upload." />
+<meta name="theme-color" content="#0a0b0d" />
+<link rel="icon" type="image/png" href="Hornbill_Mark_gold.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --black:#0a0b0d;--char:#14171b;--char-2:#1b1f24;--steel:#262b31;
+    --line:rgba(245,166,35,.14);--gold:#F5A623;--gold-2:#FFC15E;--amber-glow:rgba(245,166,35,.5);
+    --ink:#e8ebef;--mute:#8b929c;--mute-2:#5d646d;--ok:#4ade80;
+    --crit:#ff4d4d;--high:#ff8a3d;--med:#F5A623;--low:#4ade80;
+    --font-d:'Space Grotesk',system-ui,sans-serif;--font-b:'Inter',system-ui,sans-serif;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--black);color:var(--ink);font-family:var(--font-b);font-weight:300;line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  ::selection{background:var(--gold);color:var(--black)}
+  a{color:inherit;text-decoration:none}
+  h1,h2,h3{font-family:var(--font-d);font-weight:600;letter-spacing:-.01em;line-height:1.1}
+  .mono{font-family:var(--font-d);font-weight:500;letter-spacing:.26em;text-transform:uppercase;font-size:11px}
+
+  #bg{position:fixed;inset:0;z-index:0;width:100%;height:100%}
+  .veil{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(120% 90% at 80% 0%,rgba(245,166,35,.08),transparent 55%),linear-gradient(180deg,rgba(10,11,13,.65),var(--black) 60%)}
+  .scanline{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.32;background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(0,0,0,.22) 3px 4px);mix-blend-mode:multiply}
+  .content{position:relative;z-index:2}
+
+  header{position:sticky;top:0;z-index:50;background:rgba(10,11,13,.78);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+  nav{display:flex;align-items:center;justify-content:space-between;height:66px;max-width:900px;margin:0 auto;padding:0 24px}
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand img{width:30px;height:36px;object-fit:contain}
+  .brand .bt{font-family:var(--font-d);font-weight:600;font-size:15px;line-height:1}
+  .brand .bt small{display:block;font-size:8.5px;letter-spacing:.4em;color:var(--gold);margin-top:3px}
+  .back{display:inline-flex;align-items:center;gap:8px;color:var(--mute);font-size:13px;font-family:var(--font-d);transition:color .3s}
+  .back:hover{color:var(--gold)}
+
+  .shell{max-width:900px;margin:0 auto;padding:52px 24px 90px}
+  .lede{margin-bottom:34px}
+  .badge{display:inline-flex;align-items:center;gap:9px;padding:7px 14px;border:1px solid var(--crit);border-radius:2px;color:#ff9a9a;font-family:var(--font-d);font-size:11px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:20px}
+  .badge .rec{width:8px;height:8px;border-radius:50%;background:var(--crit);box-shadow:0 0 8px var(--crit);animation:blink 1.1s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .lede h1{font-size:clamp(30px,5vw,48px);margin-bottom:16px}.lede h1 .g{color:var(--gold)}
+  .lede p{color:var(--mute);max-width:60ch;font-size:16px}
+  .liveinfo{display:flex;gap:22px;flex-wrap:wrap;margin-top:20px;color:var(--mute);font-size:12.5px;font-family:var(--font-d)}
+  .liveinfo span{display:inline-flex;align-items:center;gap:7px}
+  .liveinfo .live{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:blink 1.4s infinite}
+
+  form{background:linear-gradient(180deg,rgba(20,23,27,.7),rgba(16,19,23,.5));border:1px solid var(--line);border-radius:10px;padding:36px 32px;backdrop-filter:blur(8px)}
+  .fs{border:0;padding:0;margin:0 0 32px}.fs:last-of-type{margin-bottom:0}
+  .fs > legend{font-family:var(--font-d);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:18px;display:flex;align-items:center;gap:10px;width:100%}
+  .fs > legend::after{content:"";flex:1;height:1px;background:var(--line)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .row.three{grid-template-columns:1fr 1fr 1fr}
+  .row.one{grid-template-columns:1fr}
+  @media (max-width:640px){.row,.row.three{grid-template-columns:1fr}}
+  .field{display:flex;flex-direction:column;gap:7px}
+  label{font-size:13px;color:var(--ink);font-weight:400}
+  label .req{color:var(--gold)}
+  .hint{font-size:11.5px;color:var(--mute-2)}
+  input[type=text],input[type=tel],input[type=date],input[type=time],select,textarea{
+    width:100%;background:rgba(10,11,13,.6);border:1px solid var(--steel);border-radius:4px;color:var(--ink);
+    font-family:var(--font-b);font-size:14px;padding:13px 14px;transition:border-color .25s,box-shadow .25s;outline:none;color-scheme:dark}
+  textarea{resize:vertical;min-height:92px;line-height:1.55}
+  select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%23F5A623' stroke-width='2'><path d='M3 5l4 4 4-4'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+  input[type=date]::-webkit-calendar-picker-indicator,input[type=time]::-webkit-calendar-picker-indicator{filter:invert(72%) sepia(60%) saturate(900%) hue-rotate(350deg);cursor:pointer;opacity:.9}
+  input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(245,166,35,.12)}
+  input::placeholder,textarea::placeholder{color:var(--mute-2)}
+  .err{border-color:var(--crit)!important;box-shadow:0 0 0 3px rgba(255,77,77,.12)!important}
+  .errmsg{color:#ff9a9a;font-size:11.5px;display:none}
+  .field.invalid .errmsg{display:block}
+
+  .sev-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media (max-width:640px){.sev-grid{grid-template-columns:repeat(2,1fr)}}
+  .sev{position:relative;cursor:pointer}
+  .sev input{position:absolute;opacity:0;inset:0;cursor:pointer}
+  .sev .box{border:1px solid var(--steel);border-radius:6px;padding:15px 13px;transition:all .25s var(--ease);background:rgba(10,11,13,.4);height:100%}
+  .sev .dotrow{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+  .sev .dot{width:11px;height:11px;border-radius:50%}
+  .sev .nm{font-family:var(--font-d);font-weight:600;font-size:14px}
+  .sev .desc{font-size:11.5px;color:var(--mute);line-height:1.4}
+  .sev[data-l=critical] .dot{background:var(--crit);box-shadow:0 0 8px var(--crit)}
+  .sev[data-l=high] .dot{background:var(--high);box-shadow:0 0 8px var(--high)}
+  .sev[data-l=medium] .dot{background:var(--med);box-shadow:0 0 8px var(--med)}
+  .sev[data-l=low] .dot{background:var(--low);box-shadow:0 0 8px var(--low)}
+  .sev input:checked + .box{background:rgba(245,166,35,.06);transform:translateY(-3px)}
+  .sev[data-l=critical] input:checked + .box{border-color:var(--crit);box-shadow:0 0 22px rgba(255,77,77,.28)}
+  .sev[data-l=high] input:checked + .box{border-color:var(--high);box-shadow:0 0 22px rgba(255,138,61,.25)}
+  .sev[data-l=medium] input:checked + .box{border-color:var(--med);box-shadow:0 0 22px rgba(245,166,35,.25)}
+  .sev[data-l=low] input:checked + .box{border-color:var(--low);box-shadow:0 0 22px rgba(74,222,128,.22)}
+
+  .drop{border:1.5px dashed var(--steel);border-radius:8px;padding:26px 20px;text-align:center;transition:all .25s var(--ease);cursor:pointer;background:rgba(10,11,13,.35)}
+  .drop.over{border-color:var(--gold);background:rgba(245,166,35,.06)}
+  .drop svg{width:32px;height:32px;color:var(--gold);opacity:.8;margin-bottom:8px}
+  .drop p{color:var(--mute);font-size:13.5px}.drop b{color:var(--ink);font-weight:500}
+  .files{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .chip{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--line);border-radius:3px;background:rgba(20,23,27,.6);font-size:12px;color:var(--mute)}
+  .chip b{color:var(--ink);font-weight:400;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip .x{cursor:pointer;color:var(--mute-2);font-weight:600}.chip .x:hover{color:var(--crit)}
+
+  .sigwrap{position:relative;border:1px solid var(--steel);border-radius:8px;background:rgba(10,11,13,.6);overflow:hidden}
+  #sig{display:block;width:100%;height:140px;touch-action:none;cursor:crosshair}
+  .sigline{position:absolute;left:20px;right:20px;bottom:32px;border-bottom:1px dashed var(--mute-2);pointer-events:none}
+  .sighint{position:absolute;left:20px;bottom:12px;font-size:11px;color:var(--mute-2);font-family:var(--font-d);letter-spacing:.1em;pointer-events:none}
+  .sigclear{position:absolute;right:12px;top:12px;background:rgba(20,23,27,.8);border:1px solid var(--steel);color:var(--mute);border-radius:3px;padding:6px 10px;font-size:11px;font-family:var(--font-d);cursor:pointer}
+  .sigclear:hover{border-color:var(--gold);color:var(--gold)}
+
+  .check{display:flex;gap:11px;align-items:flex-start;margin-top:4px}
+  .check input{width:17px;height:17px;margin-top:2px;accent-color:var(--gold);flex-shrink:0}
+  .check label{font-size:13px;color:var(--mute)}
+
+  .actions{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:28px;padding-top:24px;border-top:1px solid var(--line)}
+  .submit{display:inline-flex;align-items:center;gap:11px;background:var(--gold);color:var(--black);border:0;border-radius:3px;font-family:var(--font-d);font-weight:600;font-size:14.5px;letter-spacing:.02em;padding:16px 30px;cursor:pointer;transition:all .3s var(--ease)}
+  .submit:hover{box-shadow:0 0 30px var(--amber-glow);transform:translateY(-2px)}
+  .callnow{display:inline-flex;align-items:center;gap:9px;color:var(--mute);font-size:13px;font-family:var(--font-d)}
+  .callnow a{color:var(--gold)}
+
+  .success{display:none;background:linear-gradient(180deg,rgba(20,23,27,.8),rgba(16,19,23,.6));border:1px solid var(--line);border-radius:10px;padding:46px 40px;text-align:center;backdrop-filter:blur(8px)}
+  .success.show{display:block;animation:pop .5s var(--ease)}
+  @keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+  .success .ok{width:74px;height:74px;border-radius:50%;border:2px solid var(--ok);display:flex;align-items:center;justify-content:center;margin:0 auto 22px;box-shadow:0 0 30px rgba(74,222,128,.3)}
+  .success .ok svg{width:34px;height:34px;color:var(--ok)}
+  .success h2{font-size:28px;margin-bottom:12px}
+  .success p{color:var(--mute);max-width:46ch;margin:0 auto 22px}
+  .ref{display:inline-block;font-family:var(--font-d);font-weight:600;font-size:20px;letter-spacing:.06em;color:var(--gold);border:1px dashed var(--line);border-radius:5px;padding:12px 22px;margin-bottom:26px}
+  .ref small{display:block;font-size:10px;letter-spacing:.24em;color:var(--mute-2);margin-bottom:6px}
+  .success .sactions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .sbtn{display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:3px;font-family:var(--font-d);font-weight:500;font-size:13.5px;transition:all .3s var(--ease)}
+  .sbtn.p{background:var(--gold);color:var(--black)}.sbtn.p:hover{box-shadow:0 0 26px var(--amber-glow)}
+  .sbtn.g{border:1px solid var(--steel);color:var(--ink)}.sbtn.g:hover{border-color:var(--gold);color:var(--gold)}
+  .escal{margin-top:22px;font-size:12.5px;color:var(--mute)}.escal b{color:#ff9a9a}
+  /* lede picture + driving vehicle */
+  .lede-grid{display:grid;grid-template-columns:1.25fr .85fr;gap:34px;align-items:center}
+  @media (max-width:760px){.lede-grid{grid-template-columns:1fr}.lede-fig{display:none}}
+  .lede-fig{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:0}
+  .lede-fig img{width:100%;display:block}
+  .lede-fig .sweep{position:absolute;top:0;bottom:0;width:38%;left:-40%;background:linear-gradient(90deg,transparent,rgba(245,166,35,.16),transparent);animation:figsweep 5.5s ease-in-out infinite;pointer-events:none}
+  @keyframes figsweep{0%{left:-40%}55%,100%{left:120%}}
+  .inc-strip{position:relative;height:74px;margin:6px 0 26px;overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:rgba(20,23,27,.35)}
+  .inc-strip::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 60px,rgba(245,166,35,.05) 60px 61px)}
+  .inc-car{position:absolute;bottom:4px;left:-16%;width:124px;animation:incdrive 13s linear infinite;filter:drop-shadow(0 8px 12px rgba(0,0,0,.5))}
+  .inc-car img{width:100%;display:block}
+  @keyframes incdrive{0%{left:-16%}100%{left:114%}}
+  @media (prefers-reduced-motion:reduce){.lede-fig .sweep,.inc-car{animation:none}}
+</style>
+</head>
+<body>
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="veil"></div><div class="scanline"></div>
+
+<div class="content">
+<header>
+  <nav>
+    <a class="brand" href="index.html"><img src="Hornbill_Mark_white.png" alt="" /><span class="bt">HORNBILL<small>TACTICAL</small></span></a>
+    <a class="back" href="index.html"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Back to site</a>
+  </nav>
+</header>
+
+<div class="shell">
+  <div class="lede" id="lede">
+    <div class="lede-grid">
+      <div>
+        <span class="badge"><span class="rec"></span>Incident Portal · Secure Channel</span>
+        <h1>Log an <span class="g">incident.</span></h1>
+        <p>Report a security event directly to the Hornbill Tactical control room. Every submission is timestamped, triaged by severity and routed to an operator. For an incident in progress, call <b style="color:var(--gold)">063 205 1836</b> now — then file this report.</p>
+        <div class="liveinfo">
+          <span><span class="live"></span>Control room online</span>
+          <span id="clock">— · Pretoria</span>
+          <span>Avg. acknowledgement · 4.2 min</span>
+        </div>
+      </div>
+      <figure class="lede-fig"><img src="img-control-room.svg" alt="Hornbill Tactical control room — live 24/7" /><span class="sweep"></span></figure>
+    </div>
+  </div>
+  <div class="inc-strip" aria-hidden="true"><div class="inc-car"><img src="img-patrol-vehicle.svg" alt="" /></div></div>
+
+  <form id="incidentForm" novalidate>
+    <!-- 1 · Who & where -->
+    <fieldset class="fs">
+      <legend>01 · Who &amp; where</legend>
+      <div class="row">
+        <div class="field"><label>Your name <span class="req">*</span></label><input type="text" name="reporter" required placeholder="Full name" /><span class="errmsg">Please enter your name.</span></div>
+        <div class="field"><label>Contact number <span class="req">*</span></label><input type="tel" name="phone" required placeholder="063 000 0000" /><span class="errmsg">Please enter a contact number.</span></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Site / property <span class="req">*</span></label><input type="text" name="site" required placeholder="e.g. Monument Park Estate" /><span class="errmsg">Please enter the site name.</span></div>
+        <div class="field"><label>Account number</label><input type="text" name="account" placeholder="HT-000000 (if known)" /></div>
+      </div>
+    </fieldset>
+
+    <!-- 2 · What happened -->
+    <fieldset class="fs">
+      <legend>02 · What happened</legend>
+      <div class="row three">
+        <div class="field"><label>Date <span class="req">*</span></label><input type="date" name="date" required /><span class="errmsg">Select a date.</span></div>
+        <div class="field"><label>Time <span class="req">*</span></label><input type="time" name="time" required /><span class="errmsg">Select a time.</span></div>
+        <div class="field"><label>Incident type <span class="req">*</span></label>
+          <select name="type" required>
+            <option value="" disabled selected>Select…</option>
+            <option>Intrusion / Perimeter breach</option>
+            <option>Theft / Burglary</option>
+            <option>Armed robbery</option>
+            <option>Suspicious activity</option>
+            <option>Trespassing / Loitering</option>
+            <option>Vandalism / Property damage</option>
+            <option>Alarm activation</option>
+            <option>Vehicle incident</option>
+            <option>Access control breach</option>
+            <option>Medical emergency</option>
+            <option>Fire / Hazard</option>
+            <option>Other</option>
+          </select><span class="errmsg">Select a type.</span>
+        </div>
+      </div>
+
+      <div class="field" style="margin-bottom:16px">
+        <label>Severity <span class="req">*</span></label>
+        <span class="hint">Sets the response priority. When in doubt, choose higher.</span>
+        <div class="sev-grid" style="margin-top:6px">
+          <label class="sev" data-l="critical"><input type="radio" name="severity" value="Critical" required /><span class="box"><span class="dotrow"><span class="dot"></span><span class="nm">Critical</span></span><span class="desc">Life at risk / armed / in progress.</span></span></label>
+          <label class="sev" data-l="high"><input type="radio" name="severity" value="High" /><span class="box"><span class="dotrow"><span class="dot"></span><span class="nm">High</span></span><span class="desc">Active breach or theft. Urgent.</span></span></label>
+          <label class="sev" data-l="medium"><input type="radio" name="severity" value="Medium" /><span class="box"><span class="dotrow"><span class="dot"></span><span class="nm">Medium</span></span><span class="desc">Suspicious or resolved event.</span></span></label>
+          <label class="sev" data-l="low"><input type="radio" name="severity" value="Low" /><span class="box"><span class="dotrow"><span class="dot"></span><span class="nm">Low</span></span><span class="desc">Minor / for the record.</span></span></label>
+        </div>
+        <span class="errmsg" style="margin-top:8px">Please select a severity level.</span>
+      </div>
+
+      <div class="row one">
+        <div class="field"><label>What happened? <span class="req">*</span></label><textarea name="description" required placeholder="Describe the incident — where exactly, who was involved, and what you saw."></textarea><span class="errmsg">Please describe the incident.</span></div>
+      </div>
+      <div class="row one">
+        <div class="field"><label>Personnel on site &amp; action taken</label><textarea name="details" placeholder="Optional — guards/officers present, and anything already done (police called, area secured, etc.)."></textarea></div>
+      </div>
+    </fieldset>
+
+    <!-- 3 · Evidence & sign-off -->
+    <fieldset class="fs">
+      <legend>03 · Evidence &amp; sign-off</legend>
+      <div class="field" style="margin-bottom:18px">
+        <label>Evidence upload</label>
+        <span class="hint">Photos, video or documents. Drag &amp; drop or click to browse.</span>
+        <div class="drop" id="drop" style="margin-top:6px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+          <p><b>Drop files here</b> or click to browse</p>
+        </div>
+        <input type="file" id="fileInput" multiple accept="image/*,video/*,.pdf,.doc,.docx" style="display:none" />
+        <div class="files" id="fileList"></div>
+      </div>
+
+      <div class="field" style="margin-bottom:18px">
+        <label>Digital signature <span class="req">*</span></label>
+        <span class="hint">Sign to confirm this report is accurate to the best of your knowledge.</span>
+        <div class="sigwrap" style="margin-top:6px">
+          <canvas id="sig"></canvas>
+          <div class="sigline"></div><div class="sighint">Sign above the line</div>
+          <button type="button" class="sigclear" id="sigClear">Clear</button>
+        </div>
+        <span class="errmsg" id="sigErr">Please provide a signature.</span>
+      </div>
+
+      <div class="check"><input type="checkbox" name="consent" id="consent" required /><label for="consent">I confirm the information provided is true and accurate, and consent to Hornbill Tactical processing this report to respond to the incident.</label></div>
+    </fieldset>
+
+    <div class="actions">
+      <button type="submit" class="submit">Submit incident report
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+      <span class="callnow"><span style="width:7px;height:7px;border-radius:50%;background:var(--crit);box-shadow:0 0 8px var(--crit);display:inline-block"></span>In progress? Call <a href="tel:+27632051836">063 205 1836</a></span>
+    </div>
+  </form>
+
+  <div class="success" id="success">
+    <div class="ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 6L9 17l-5-5"/></svg></div>
+    <h2>Incident logged.</h2>
+    <p id="succMsg">Your report has reached the Hornbill Tactical control room. An operator will acknowledge it shortly.</p>
+    <div class="ref"><small>Reference number</small><span id="refNo">HT-…</span></div>
+    <div class="sactions">
+      <a class="sbtn p" id="mailBtn" href="#">Email a copy to the control room</a>
+      <a class="sbtn g" id="dlBtn" href="#" download>Download report</a>
+      <a class="sbtn g" href="index.html">Return to site</a>
+    </div>
+    <div class="escal" id="escal"></div>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var reduce=matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function tick(){var d=new Date();var t=d.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});var el=document.getElementById('clock');if(el)el.textContent=t+' · Pretoria';}
+  tick();setInterval(tick,1000);
+  // prefill date+time with now (fully editable)
+  (function(){var d=new Date(),p=function(n){return(''+n).padStart(2,'0');};
+    var df=document.querySelector('[name=date]'),tf=document.querySelector('[name=time]');
+    if(df)df.value=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+    if(tf)tf.value=p(d.getHours())+':'+p(d.getMinutes());
+    if(df)df.max=df.value; // can't be in the future
+  })();
+
+  /* background particle field */
+  var bg=document.getElementById('bg'),bx=bg.getContext('2d'),W,H,pts=[],DPR=Math.min(2,devicePixelRatio||1);
+  function rz(){W=innerWidth;H=innerHeight;bg.width=W*DPR;bg.height=H*DPR;bx.setTransform(DPR,0,0,DPR,0,0);pts=[];var n=Math.min(90,Math.floor(W/16));for(var i=0;i<n;i++)pts.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.18,vy:(Math.random()-.5)*.18});}
+  rz();addEventListener('resize',rz);
+  function bgDraw(){bx.clearRect(0,0,W,H);pts.forEach(function(p){if(!reduce){p.x+=p.vx;p.y+=p.vy;}if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1;});
+    for(var i=0;i<pts.length;i++)for(var j=i+1;j<pts.length;j++){var a=pts[i],b=pts[j],d=Math.hypot(a.x-b.x,a.y-b.y);if(d<120){bx.beginPath();bx.moveTo(a.x,a.y);bx.lineTo(b.x,b.y);bx.strokeStyle='rgba(245,166,35,'+(0.06*(1-d/120))+')';bx.lineWidth=1;bx.stroke();}}
+    pts.forEach(function(p){bx.beginPath();bx.arc(p.x,p.y,1.3,0,Math.PI*2);bx.fillStyle='rgba(245,166,35,.35)';bx.fill();});
+    requestAnimationFrame(bgDraw);}
+  requestAnimationFrame(bgDraw);
+
+  /* evidence upload */
+  var drop=document.getElementById('drop'),fileInput=document.getElementById('fileInput'),fileList=document.getElementById('fileList'),files=[];
+  drop.addEventListener('click',function(){fileInput.click();});
+  ['dragenter','dragover'].forEach(function(e){drop.addEventListener(e,function(ev){ev.preventDefault();drop.classList.add('over');});});
+  ['dragleave','drop'].forEach(function(e){drop.addEventListener(e,function(ev){ev.preventDefault();drop.classList.remove('over');});});
+  drop.addEventListener('drop',function(ev){addFiles(ev.dataTransfer.files);});
+  fileInput.addEventListener('change',function(){addFiles(fileInput.files);});
+  function addFiles(fl){for(var i=0;i<fl.length;i++)files.push(fl[i]);render();}
+  function render(){fileList.innerHTML='';files.forEach(function(f,i){var c=document.createElement('div');c.className='chip';c.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F5A623" stroke-width="1.6"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg><b>'+f.name+'</b><span class="x" data-i="'+i+'">✕</span>';fileList.appendChild(c);});
+    fileList.querySelectorAll('.x').forEach(function(x){x.addEventListener('click',function(){files.splice(+x.getAttribute('data-i'),1);render();});});}
+
+  /* signature pad */
+  var sig=document.getElementById('sig'),sx=sig.getContext('2d'),drawing=false,hasSig=false,last=null;
+  function sigSize(){var r=sig.getBoundingClientRect();sig.width=r.width*DPR;sig.height=r.height*DPR;sx.setTransform(DPR,0,0,DPR,0,0);sx.strokeStyle='#F5A623';sx.lineWidth=2;sx.lineCap='round';sx.lineJoin='round';}
+  setTimeout(sigSize,60);addEventListener('resize',function(){sigSize();hasSig=false;});
+  function pos(e){var r=sig.getBoundingClientRect();var p=e.touches?e.touches[0]:e;return{x:p.clientX-r.left,y:p.clientY-r.top};}
+  function start(e){e.preventDefault();drawing=true;last=pos(e);}
+  function move(e){if(!drawing)return;e.preventDefault();var p=pos(e);sx.beginPath();sx.moveTo(last.x,last.y);sx.lineTo(p.x,p.y);sx.stroke();last=p;hasSig=true;var f=sig.closest('.field');if(f)f.classList.remove('invalid');}
+  function end(){drawing=false;}
+  sig.addEventListener('mousedown',start);sig.addEventListener('mousemove',move);addEventListener('mouseup',end);
+  sig.addEventListener('touchstart',start,{passive:false});sig.addEventListener('touchmove',move,{passive:false});sig.addEventListener('touchend',end);
+  document.getElementById('sigClear').addEventListener('click',function(){sx.clearRect(0,0,sig.width,sig.height);hasSig=false;});
+
+  /* validation + submit */
+  var form=document.getElementById('incidentForm');
+  function markField(el,bad){var f=el.closest('.field');if(!f)return;f.classList.toggle('invalid',bad);el.classList.toggle('err',bad);}
+  form.addEventListener('submit',function(e){
+    e.preventDefault();
+    var ok=true,firstBad=null;
+    form.querySelectorAll('[required]').forEach(function(el){
+      if(el.type==='radio'){if(!form.querySelector('input[name="'+el.name+'"]:checked')){ok=false;var g=el.closest('.field');if(g)g.classList.add('invalid');if(!firstBad)firstBad=el;}return;}
+      if(el.type==='checkbox'){if(!el.checked){ok=false;el.style.outline='2px solid var(--crit)';if(!firstBad)firstBad=el;}else el.style.outline='';return;}
+      var bad=!el.value.trim();markField(el,bad);if(bad){ok=false;if(!firstBad)firstBad=el;}
+    });
+    var sigField=sig.closest('.field');
+    if(!hasSig){ok=false;sigField.classList.add('invalid');if(!firstBad)firstBad=sig;}else sigField.classList.remove('invalid');
+    if(!ok){if(firstBad&&firstBad.scrollIntoView)firstBad.scrollIntoView({behavior:'smooth',block:'center'});return;}
+
+    var data=new FormData(form),obj={};data.forEach(function(v,k){obj[k]=v;});
+    var d=new Date(),pad=function(n){return(''+n).padStart(2,'0');};
+    var ref='HT-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+Math.floor(1000+Math.random()*9000);
+    obj.reference=ref;obj.filed=d.toISOString();obj.evidence=files.map(function(f){return f.name;});
+    var when=(obj.date||'')+' '+(obj.time||'');
+
+    document.getElementById('refNo').textContent=ref;
+    var sev=obj.severity||'—';
+    document.getElementById('succMsg').textContent='Your '+sev.toLowerCase()+'-severity report on "'+(obj.site||'your site')+'" has reached the Hornbill Tactical control room. An operator will acknowledge it shortly.';
+    var escal=document.getElementById('escal');
+    if(sev==='Critical'||sev==='High'){escal.innerHTML='<b>'+sev+' severity</b> — flagged for immediate dispatch. If the incident is in progress, call <b style="color:var(--gold)">063 205 1836</b> now.';}
+    else{escal.innerHTML='Logged for review. Keep your reference number for follow-up.';}
+
+    var body='HORNBILL TACTICAL — INCIDENT REPORT%0D%0A========================================%0D%0A'+
+      'Reference: '+ref+'%0D%0AFiled: '+d.toLocaleString('en-ZA')+'%0D%0ASeverity: '+sev+'%0D%0A%0D%0A'+
+      'Reporter: '+(obj.reporter||'')+'%0D%0APhone: '+(obj.phone||'')+'%0D%0A'+
+      'Site: '+(obj.site||'')+'%0D%0AAccount: '+(obj.account||'')+'%0D%0A%0D%0A'+
+      'Incident date/time: '+when+'%0D%0AType: '+(obj.type||'')+'%0D%0A%0D%0A'+
+      'What happened:%0D%0A'+encodeURIComponent(obj.description||'')+'%0D%0A%0D%0A'+
+      'Personnel / action taken:%0D%0A'+encodeURIComponent(obj.details||'')+'%0D%0A%0D%0A'+
+      'Evidence files: '+(obj.evidence.length?obj.evidence.join(', '):'none attached')+'%0D%0A';
+    document.getElementById('mailBtn').href='mailto:nyiko@hornbillholdings.co.za?subject='+encodeURIComponent('['+sev+'] Incident '+ref+' — '+(obj.site||''))+'&body='+body;
+
+    var txt='HORNBILL TACTICAL — INCIDENT REPORT\n=====================================\n'+
+      'Reference: '+ref+'\nFiled: '+d.toLocaleString('en-ZA')+'\nSeverity: '+sev+'\n\n'+
+      'Reporter: '+(obj.reporter||'')+'\nPhone: '+(obj.phone||'')+'\n'+
+      'Site: '+(obj.site||'')+'\nAccount: '+(obj.account||'')+'\n\n'+
+      'Incident date/time: '+when+'\nType: '+(obj.type||'')+'\n\n'+
+      'What happened:\n'+(obj.description||'')+'\n\nPersonnel / action taken:\n'+(obj.details||'')+'\n\n'+
+      'Evidence files: '+(obj.evidence.length?obj.evidence.join(', '):'none attached')+'\n';
+    var blob=new Blob([txt],{type:'text/plain'});
+    var dl=document.getElementById('dlBtn');dl.href=URL.createObjectURL(blob);dl.setAttribute('download',ref+'.txt');
+
+    // ---- LIVE send to the control room as a formatted table ----
+    try{
+      fetch('https://formsubmit.co/ajax/nyiko@hornbillholdings.co.za',{
+        method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},
+        body:JSON.stringify({
+          _subject:'['+sev+'] Incident '+ref+' — '+(obj.site||''),
+          _template:'table',
+          Reference:ref,'Filed':d.toLocaleString('en-ZA'),Severity:sev,
+          Reporter:obj.reporter||'',Phone:obj.phone||'',Site:obj.site||'',Account:obj.account||'—',
+          'Date & time':when,Type:obj.type||'',
+          'What happened':obj.description||'','Personnel / action taken':obj.details||'—',
+          Evidence:(obj.evidence.length?obj.evidence.join(', '):'none attached')
+        })
+      }).catch(function(){});
+    }catch(e){}
+
+    document.getElementById('lede').style.display='none';form.style.display='none';
+    document.getElementById('success').classList.add('show');
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+  form.addEventListener('input',function(e){var el=e.target;if(el.closest('.field'))markField(el,false);if(el.type==='checkbox')el.style.outline='';});
+  form.querySelectorAll('input[name=severity]').forEach(function(r){r.addEventListener('change',function(){var f=r.closest('.field');if(f)f.classList.remove('invalid');});});
+})();
+</script>
+</body>
+</html>

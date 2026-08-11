@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Hornbill Tactical control room with a wall of live camera feeds and a national map">
+  <defs>
+    <linearGradient id="rm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12151b"/><stop offset="1" stop-color="#0a0c10"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.4" r="0.6"><stop offset="0" stop-color="#F5A623" stop-opacity="0.16"/><stop offset="1" stop-color="#F5A623" stop-opacity="0"/></radialGradient>
+    <linearGradient id="scr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1b2129"/><stop offset="1" stop-color="#12161c"/></linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#rm)"/>
+  <rect width="800" height="500" fill="url(#glow)"/>
+  <!-- monitor wall -->
+  <g>
+    <!-- big central map screen -->
+    <rect x="300" y="40" width="200" height="150" rx="4" fill="url(#scr)" stroke="#F5A623" stroke-opacity="0.5"/>
+    <path d="M330,110 l14,-10 l4,14 l16,-6 l10,10 l18,-4 l8,-18 l14,10 l-4,20 l16,4 l-2,16 l-20,4 l-30,-2 l-24,6 l-18,-10 z" fill="none" stroke="#F5A623" stroke-opacity="0.7"/>
+    <circle cx="392" cy="112" r="3" fill="#4ade80"/>
+    <text x="330" y="176" font-family="'Space Grotesk',sans-serif" font-size="9" letter-spacing="2" fill="#8b929c">NATIONAL GRID · LIVE</text>
+    <!-- side feeds -->
+    <g stroke="#F5A623" stroke-opacity="0.4" fill="url(#scr)">
+      <rect x="140" y="46" width="140" height="90" rx="3"/><rect x="140" y="150" width="140" height="90" rx="3"/>
+      <rect x="520" y="46" width="140" height="90" rx="3"/><rect x="520" y="150" width="140" height="90" rx="3"/>
+    </g>
+    <!-- feed content -->
+    <g fill="#F5A623" opacity="0.6">
+      <rect x="150" y="56" width="4" height="4"/><text x="162" y="60" font-family="'Space Grotesk',sans-serif" font-size="7" fill="#8b929c">CAM 01</text>
+      <circle cx="210" cy="95" r="14" fill="none" stroke="#F5A623" stroke-opacity="0.6"/><circle cx="210" cy="95" r="3"/>
+      <text x="150" y="60" font-family="'Space Grotesk',sans-serif" font-size="7" fill="#8b929c"></text>
+    </g>
+    <g fill="#8b929c" font-family="'Space Grotesk',sans-serif" font-size="7">
+      <text x="150" y="164">CAM 02 · GATE</text><text x="530" y="60">CAM 07 · PERIMETER</text><text x="530" y="164">CAM 12 · YARD</text>
+    </g>
+    <!-- waveform on a feed -->
+    <polyline points="150,210 165,196 180,214 195,190 210,212 225,198 240,216 255,200 270,210" fill="none" stroke="#4ade80" stroke-opacity="0.7"/>
+    <polyline points="530,210 545,200 560,214 575,192 590,212 605,198 620,214 635,202 650,210" fill="none" stroke="#F5A623" stroke-opacity="0.7"/>
+    <!-- reticles -->
+    <g stroke="#FFC15E" stroke-width="1.2" fill="none">
+      <path d="M566,86 h8 v-8 M636,86 h-8 v-8 M566,116 h8 v8 M636,116 h-8 v8"/>
+    </g>
+  </g>
+  <!-- desk -->
+  <rect x="0" y="360" width="800" height="140" fill="#0e1116"/>
+  <path d="M120,360 Q400,330 680,360" fill="none" stroke="#F5A623" stroke-opacity="0.3" stroke-width="2"/>
+  <!-- desk mini-screens -->
+  <g fill="url(#scr)" stroke="#F5A623" stroke-opacity="0.4">
+    <rect x="180" y="372" width="90" height="44" rx="3" transform="skewX(-6)"/>
+    <rect x="520" y="372" width="90" height="44" rx="3" transform="skewX(6)"/>
+  </g>
+  <!-- operator silhouette -->
+  <g fill="#0a0c10">
+    <circle cx="400" cy="392" r="30"/>
+    <path d="M348,500 Q352,420 400,418 Q448,420 452,500 Z"/>
+  </g>
+  <path d="M400,362 a30,30 0 0 1 0,0" />
+  <ellipse cx="400" cy="392" rx="32" ry="32" fill="none" stroke="#F5A623" stroke-opacity="0.25"/>
+  <!-- headset hint -->
+  <path d="M372,392 a28,26 0 0 1 56,0" fill="none" stroke="#F5A623" stroke-opacity="0.4" stroke-width="2"/>
+  <circle cx="372" cy="396" r="4" fill="#F5A623" opacity="0.7"/>
+  <g>
+    <rect x="24" y="452" width="196" height="30" rx="3" fill="#0a0c10" stroke="#F5A623" stroke-opacity="0.3"/>
+    <circle cx="40" cy="467" r="4" fill="#4ade80"/>
+    <text x="54" y="471" font-family="'Space Grotesk',sans-serif" font-size="12" letter-spacing="2" fill="#8b929c">CONTROL ROOM · 24/7 LIVE</text>
+  </g>
+</svg>

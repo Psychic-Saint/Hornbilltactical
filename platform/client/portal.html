@@ -26,6 +26,7 @@
     <a class="item" data-v="tasks" onclick="nav('tasks')"><span class="ic">✔</span> Tasks &amp; requests</a>
     <a class="item" data-v="profile" onclick="nav('profile')"><span class="ic">👤</span> Profile</a>
     <div class="spacer"></div>
+    <a class="item" href="../../index.html"><span class="ic">↩</span> Hornbill website</a>
     <a class="item" onclick="logout('login.html')"><span class="ic">⏻</span> Log out</a>
   </aside>
   <main class="main" id="main"><div class="spin"></div></main>
@@ -160,6 +161,7 @@ async function submitClientIncident(){
       if(HT_CONFIG.DRIVE_ENABLED&&att){const b64=await fileToB64(f);callFn("drive-upload",{name:f.name,mime:f.type,b64,attachment_id:att.id,incident_id:inc.id});}
     }
   }catch(_){}}
+  callFn("notify-incident",{incident_id:inc.id}); // branded staff alert (active once email sender configured)
   toast("Incident "+inc.reference+" submitted","ok");
   nav("incidents");setTimeout(()=>openIncident(inc.id),300);
 }

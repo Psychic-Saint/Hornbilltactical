@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hornbill Tactical — Operations Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="mobile-bar">
+  <button class="hamburger" onclick="document.querySelector('.side').classList.add('open');document.querySelector('.backdrop').classList.add('show')">☰</button>
+  <a class="brand" style="font-size:1rem"><img src="../assets/Hornbill_Mark_gold.png" style="height:24px" alt=""> <b class="g">CONSOLE</b></a>
+  <span style="width:34px"></span>
+</div>
+<div class="backdrop" onclick="this.classList.remove('show');document.querySelector('.side').classList.remove('open')"></div>
+
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="../index.html"><img src="../assets/Hornbill_Mark_gold.png" style="height:26px" alt=""> HORNBILL <b class="g">TACTICAL</b></a>
+    <a class="item" data-v="dashboard" onclick="nav('dashboard')"><span class="ic">▚</span> Dashboard</a>
+    <a class="item" data-v="incidents" onclick="nav('incidents')"><span class="ic">📋</span> Incidents</a>
+    <a class="item" data-v="clients" onclick="nav('clients')"><span class="ic">🏢</span> Clients</a>
+    <a class="item" data-v="invoices" onclick="nav('invoices')"><span class="ic">🧾</span> Invoices</a>
+    <a class="item" data-v="tasks" onclick="nav('tasks')"><span class="ic">✔</span> Tasks</a>
+    <a class="item" data-v="users" onclick="nav('users')"><span class="ic">👥</span> Users</a>
+    <a class="item" data-v="audit" onclick="nav('audit')"><span class="ic">🗂️</span> Audit trail</a>
+    <div class="spacer"></div>
+    <div class="pill" id="whoPill" style="margin:0 8px 8px"></div>
+    <a class="item" onclick="logout('login.html')"><span class="ic">⏻</span> Sign out</a>
+  </aside>
+  <main class="main" id="main"><div class="spin"></div></main>
+</div>
+<div class="overlay right" id="drawer" onclick="if(event.target===this)close_()"></div>
+<div class="overlay" id="modal" onclick="if(event.target===this)closeModal()"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="../config.js"></script>
+<script src="../app.js"></script>
+<script src="../fx.js"></script>
+<script>
+let ME,STAFF=[],CLIENTS=[];
+const clientObj=id=>CLIENTS.find(c=>c.id===id);
+const main=document.getElementById("main");
+function setActive(v){document.querySelectorAll(".side .item").forEach(a=>a.classList.toggle("active",a.dataset.v===v));}
+function closeMobile(){document.querySelector('.side').classList.remove('open');document.querySelector('.backdrop').classList.remove('show');}
+function nav(v){setActive(v);closeMobile();views[v]();}
+function close_(){document.getElementById("drawer").classList.remove("show");}
+function openModal(html){const m=document.getElementById("modal");m.innerHTML=`<div class="modal">${html}</div>`;m.classList.add("show");}
+function closeModal(){document.getElementById("modal").classList.remove("show");}
+
+(async()=>{
+  ME=await requireRole("staff","login.html");if(!ME)return;
+  document.getElementById("whoPill").textContent=ME.profile.full_name+" · "+ME.profile.role;
+  const [{data:st},{data:cl}]=await Promise.all([
+    sb.from("profiles").select("id,full_name,role,is_active").order("full_name"),
+    sb.from("clients").select("*").order("name"),
+  ]);
+  STAFF=st||[];CLIENTS=cl||[];
+  nav("dashboard");
+})();
+const staffName=id=>STAFF.find(s=>s.id===id)?.full_name||"Unassigned";
+const clientName=id=>CLIENTS.find(c=>c.id===id)?.name||"—";
+const views={};
+
+/* ============ DASHBOARD ============ */
+views.dashboard=async()=>{
+  main.innerHTML='<div class="spin"></div>';
+  const [{data:inc},{data:invs},{data:tasks}]=await Promise.all([
+    sb.from("incidents").select("id,reference,incident_type,status,source,client_id,urgency,created_at").order("created_at",{ascending:false}),
+    sb.from("invoices").select("amount,status"),
+    sb.from("tasks").select("id,status,is_client_request"),
+  ]);
+  const c=s=>inc.filter(i=>i.status===s).length;
+  const bySrc=s=>inc.filter(i=>i.source===s).length;
+  const open=inc.filter(i=>!["resolved","closed"].includes(i.status)).length;
+  const out=invs.filter(i=>i.status!=="paid").reduce((a,b)=>a+ +b.amount,0);
+  const openReq=tasks.filter(t=>t.is_client_request&&t.status==="open").length;
+  const crit=inc.filter(i=>i.urgency==="critical"&&!["resolved","closed"].includes(i.status)).length;
+  const threat= crit>0?["ELEVATED","var(--crit)"]:(c("action_required")>0?["GUARDED","var(--high)"]:["NORMAL","var(--ok)"]);
+  main.innerHTML=`
+    <div class="cmdbar">
+      <div class="cmd-l">
+        <div class="cmd-eyebrow"><span class="live"></span> Operations Command · Live</div>
+        <div class="cmd-title">Control Room</div>
+        <div class="cmd-sub">${STAFF.length} operators on system · ${CLIENTS.length} client sites monitored</div>
+      </div>
+      <div class="cmd-r">
+        <div style="text-align:right"><div class="cmd-date">Threat level</div>
+          <div class="cmd-title" style="font-size:1.15rem;color:${threat[1]}">${threat[0]}</div></div>
+        <div style="text-align:right"><div class="cmd-clock" id="cmdClock">--:--:--</div>
+          <div class="cmd-date">${new Date().toLocaleDateString("en-ZA",{weekday:"long",day:"numeric",month:"long"})}</div></div>
+        <div class="radar"><div class="sweep"></div><div class="blip"></div></div>
+      </div>
+    </div>
+    <div class="grid g4" style="margin-bottom:14px">
+      <div class="stat3d gold" style="cursor:pointer" onclick="goIncidents()"><div class="ic">🚨</div><div class="n" data-count="${open}"></div><div class="l">Open incidents ›</div></div>
+      <div class="stat3d" style="cursor:pointer" onclick="goIncidents('status','under_investigation')"><div class="ic">🔎</div><div class="n" data-count="${c("under_investigation")}"></div><div class="l">Investigating ›</div></div>
+      <div class="stat3d warn" style="cursor:pointer" onclick="goIncidents('status','action_required')"><div class="ic">⚠️</div><div class="n" data-count="${c("action_required")}"></div><div class="l">Action required ›</div></div>
+      <div class="stat3d" style="cursor:pointer" onclick="goIncidents()"><div class="ic">📋</div><div class="n" data-count="${inc.length}"></div><div class="l">Total incidents ›</div></div>
+    </div>
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="stat3d gold" style="cursor:pointer" onclick="goIncidents('source','guest')"><div class="ic">🟡</div><div class="n" data-count="${bySrc("guest")}"></div><div class="l">Guest reports ›</div></div>
+      <div class="stat3d info" style="cursor:pointer" onclick="goIncidents('source','client')"><div class="ic">🔵</div><div class="n" data-count="${bySrc("client")}"></div><div class="l">Client reports ›</div></div>
+      <div class="stat3d" style="cursor:pointer" onclick="goIncidents('source','staff')"><div class="ic">🛡️</div><div class="n" data-count="${bySrc("staff")}"></div><div class="l">Staff logged ›</div></div>
+      <div class="stat3d ${openReq?"warn":""}" style="cursor:pointer" onclick="nav('tasks')"><div class="ic">✋</div><div class="n" data-count="${openReq}"></div><div class="l">Open client requests ›</div></div>
+    </div>
+    <div class="grid g2" style="margin-bottom:18px">
+      <div class="card chart-card"><h3>Incidents by status</h3><div style="height:230px"><canvas id="chStatus"></canvas></div></div>
+      <div class="card chart-card"><h3>Incidents by source</h3><div style="height:230px"><canvas id="chSource"></canvas></div></div>
+    </div>
+    <div class="grid g2">
+      <div class="card"><div class="between"><h3>Latest incidents</h3><a class="btn btn-ghost btn-sm" onclick="nav('incidents')">All incidents</a></div>
+        ${inc.slice(0,7).map(i=>`<div class="kv clickable" onclick="openIncident('${i.id}')">
+          <span><span class="ref" style="color:var(--gold);font-family:var(--font-d)">${esc(i.reference)}</span> ${esc(i.incident_type)}
+            <small>· ${i.client_id?esc(clientName(i.client_id)):"No client"}</small></span>
+          <span class="wrap-gap">${sourceBadge(i.source)} ${statusBadge(i.status)}</span></div>`).join("")}
+      </div>
+      <div class="card"><h3>Finance snapshot</h3>
+        <div class="stat" style="margin-bottom:10px"><div class="n" style="color:var(--gold)">${money(out)}</div><div class="l">Receivable (unpaid)</div></div>
+        <a class="btn btn-ghost btn-sm btn-block" onclick="nav('invoices')">Manage invoices</a>
+        <a class="btn btn-ghost btn-sm btn-block" style="margin-top:8px" onclick="nav('tasks')">Task board</a>
+      </div>
+    </div>`;
+  donut("chStatus",STATUS_ORDER.map(s=>STATUS[s].label),STATUS_ORDER.map(s=>c(s)),STATUS_ORDER.map(s=>STATUS[s].color));
+  donut("chSource",["Guest","Client","Staff"],[bySrc("guest"),bySrc("client"),bySrc("staff")],["#F5A623","#5aa9ff","#8b929c"]);
+  window.countUp&&window.countUp(main);startClock();
+};
+function goIncidents(field,val){incFilter={source:"",status:""};if(field)incFilter[field]=val;nav("incidents");}
+let _clock;
+function startClock(){const el=document.getElementById("cmdClock");if(!el)return;clearInterval(_clock);
+  const tick=()=>{el.textContent=new Date().toLocaleTimeString("en-ZA",{hour12:false});};tick();_clock=setInterval(tick,1000);}
+
+/* ============ INCIDENTS ============ */
+let incFilter={source:"",status:""};
+views.incidents=async()=>{
+  main.innerHTML=`<div class="page-head"><h2>Incidents</h2><div class="wrap-gap"><button class="btn btn-ghost" onclick="exportData('incidents')">⬇ Export</button><button class="btn btn-steel" onclick="importModal('incidents')">⬆ Import</button><button class="btn btn-primary" onclick="newIncident()">+ Log incident</button></div></div>
+    <div class="wrap-gap" id="filters" style="margin-bottom:14px"></div><div id="inctable"><div class="spin"></div></div>`;
+  renderFilters();loadIncidents();
+};
+function renderFilters(){
+  const src=[["","All sources"],["guest","🟡 Guest"],["client","🔵 Client"],["staff","🛡️ Staff"]];
+  const sts=[["","All statuses"]].concat(STATUS_ORDER.map(s=>[s,STATUS[s].label]));
+  document.getElementById("filters").innerHTML=
+    src.map(([v,l])=>`<span class="chip-filter ${incFilter.source===v?"on":""}" onclick="incFilter.source='${v}';renderFilters();loadIncidents()">${l}</span>`).join("")+
+    `<span style="width:14px"></span>`+
+    sts.map(([v,l])=>`<span class="chip-filter ${incFilter.status===v?"on":""}" onclick="incFilter.status='${v}';renderFilters();loadIncidents()">${l}</span>`).join("");
+}
+async function loadIncidents(){
+  let q=sb.from("incidents").select("*").order("created_at",{ascending:false});
+  if(incFilter.source)q=q.eq("source",incFilter.source);
+  if(incFilter.status)q=q.eq("status",incFilter.status);
+  const {data:inc}=await q;
+  document.getElementById("inctable").innerHTML=`<div class="tablewrap"><table class="table">
+    <thead><tr><th>Reference</th><th>Source</th><th>Type</th><th>Client</th><th>Urgency</th><th>Status</th><th>Assigned</th><th>Reported</th></tr></thead>
+    <tbody>${(inc||[]).map(i=>`<tr class="clickable" onclick="openIncident('${i.id}')">
+      <td class="ref">${esc(i.reference)}</td><td>${sourceBadge(i.source)}</td><td>${esc(i.incident_type)}</td>
+      <td>${i.client_id?esc(clientName(i.client_id)):'<span class="mute">—</span>'}</td>
+      <td>${urgencyBadge(i.urgency)}</td><td>${statusBadge(i.status)}</td>
+      <td><small>${esc(staffName(i.assigned_to))}</small></td><td><small>${fmtDate(i.created_at)}</small></td></tr>`).join("")
+      ||'<tr><td colspan="8"><div class="empty">No incidents match.</div></td></tr>'}</tbody></table></div>`;
+}
+async function openIncident(id){
+  const dr=document.getElementById("drawer");dr.classList.add("show");dr.innerHTML='<div class="drawer"><div class="spin"></div></div>';
+  const [{data:i},{data:hist},{data:updates},{data:atts}]=await Promise.all([
+    sb.from("incidents").select("*").eq("id",id).single(),
+    sb.from("incident_status_history").select("status,note,created_at").eq("incident_id",id).order("created_at"),
+    sb.from("incident_updates").select("*").eq("incident_id",id).order("created_at",{ascending:false}),
+    sb.from("incident_attachments").select("file_name,storage_path").eq("incident_id",id),
+  ]);
+  const statusSel=STATUS_ORDER.map(s=>`<option value="${s}" ${i.status===s?"selected":""}>${STATUS[s].label}</option>`).join("");
+  const staffSel=`<option value="">Unassigned</option>`+STAFF.map(s=>`<option value="${s.id}" ${i.assigned_to===s.id?"selected":""}>${esc(s.full_name)}</option>`).join("");
+  dr.innerHTML=`<div class="drawer">
+    <div class="between"><h2 class="g" style="margin:0;font-size:1.3rem">${esc(i.reference)}</h2><button class="x" onclick="close_()">×</button></div>
+    <div class="wrap-gap" style="margin:12px 0 16px">${sourceBadge(i.source)} ${statusBadge(i.status)} ${urgencyBadge(i.urgency)}</div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="kv"><b>Client</b><span>${i.client_id?esc(clientName(i.client_id)):'<span class="tag">No client (guest)</span>'}</span></div>
+      <div class="kv"><b>Type</b><span>${esc(i.incident_type)}</span></div>
+      <div class="kv"><b>Location</b><span>${esc(i.location||"—")}</span></div>
+      <div class="kv"><b>Occurred</b><span>${fmtDate(i.incident_date)}${i.incident_time?" · "+i.incident_time.slice(0,5):""}</span></div>
+      <div class="kv"><b>Reported</b><span>${fmtDateTime(i.created_at)}</span></div>
+      <div class="kv"><b>Contact</b><span>${esc(i.contact_name||"—")}${i.contact_phone?" · "+esc(i.contact_phone):""}${i.contact_email?" · "+esc(i.contact_email):""}</span></div>
+      ${i.people_involved?`<div class="kv"><b>People</b><span>${esc(i.people_involved)}</span></div>`:""}
+      ${i.supporting_info?`<div class="kv"><b>Extra info</b><span>${esc(i.supporting_info)}</span></div>`:""}
+    </div>
+    <div class="card" style="margin-bottom:14px"><b class="mute" style="font-size:.78rem">DESCRIPTION</b><p style="margin:8px 0 0">${esc(i.description||"—")}</p></div>
+    ${atts&&atts.length?`<div class="card" style="margin-bottom:14px"><b class="mute" style="font-size:.78rem">EVIDENCE</b>
+      <div style="margin-top:8px">${atts.map(a=>`<div class="filerow"><span>📄 ${esc(a.file_name)}</span><button class="btn btn-sm btn-ghost" onclick="dl('${esc(a.storage_path)}')">View</button></div>`).join("")}</div></div>`:""}
+
+    <div class="card gold" style="margin-bottom:14px"><h3 style="margin-top:0">Investigate</h3>
+      <div class="row"><div class="field"><label>Status</label><select id="d_status">${statusSel}</select></div>
+        <div class="field"><label>Assign to</label><select id="d_assign">${staffSel}</select></div></div>
+      <button class="btn btn-primary btn-sm" onclick="saveInvestigate('${id}')">Save changes</button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px"><h3 style="margin-top:0">Communication</h3>
+      <div class="field" style="margin-bottom:8px"><label>Add an update</label><textarea id="d_body" placeholder="Write an update…"></textarea></div>
+      <div class="wrap-gap">
+        <button class="btn btn-steel btn-sm" onclick="addUpdate('${id}','internal')">🛡️ Add internal note</button>
+        <button class="btn btn-primary btn-sm" onclick="addUpdate('${id}','client')">🔵 Post client-visible update</button>
+      </div>
+      <p class="hint">Internal notes are never shown to the client. Client updates appear in their portal &amp; guest tracking.</p>
+      <div style="margin-top:14px">${(updates||[]).map(u=>`<div class="note-card ${u.visibility==='client'?'note-client':'note-internal'}">
+        <div class="who"><span class="note-tag" style="color:${u.visibility==='client'?'var(--info)':'var(--gold)'}">${u.visibility==='client'?'CLIENT UPDATE':'INTERNAL NOTE'}</span><span>${fmtDateTime(u.created_at)}</span></div>
+        ${esc(u.body)}<div style="margin-top:4px"><small>${esc(u.author_label||"")}</small></div></div>`).join("")||'<p class="mute" style="font-size:.9rem">No updates yet.</p>'}</div>
+    </div>
+
+    <div class="card"><h3 style="margin-top:0">Status history</h3><div class="timeline">${buildTimeline(hist||[])}</div></div>
+  </div>`;
+}
+async function saveInvestigate(id){
+  const status=document.getElementById("d_status").value;
+  const assigned_to=document.getElementById("d_assign").value||null;
+  const {error}=await sb.from("incidents").update({status,assigned_to}).eq("id",id);
+  if(error){toast(error.message,"err");return;}
+  await sb.from("audit_log").insert({actor:ME.user.id,actor_label:ME.profile.full_name,action:"incident.updated",entity:"incident",entity_id:id,meta:{status,assigned_to}});
+  toast("Incident updated","ok");openIncident(id);loadIncidents&&loadIncidents();
+}
+async function addUpdate(id,visibility){
+  const body=document.getElementById("d_body").value.trim();
+  if(!body){toast("Write something first","err");return;}
+  const {error}=await sb.from("incident_updates").insert({incident_id:id,visibility,body,author:ME.user.id,author_label:visibility==="client"?"Hornbill Tactical":ME.profile.full_name});
+  if(error){toast(error.message,"err");return;}
+  toast(visibility==="client"?"Client update posted":"Internal note added","ok");openIncident(id);
+}
+function newIncident(){
+  openModal(`<div class="between"><h2 style="margin:0">Log incident</h2><button class="x" onclick="closeModal()">×</button></div>
+    <div class="field"><label>Client</label><select id="n_client"><option value="">No client</option>${CLIENTS.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></div>
+    <div class="row"><div class="field"><label>Type *</label><select id="n_type">${INCIDENT_TYPES.map(t=>`<option>${t}</option>`).join("")}</select></div>
+      <div class="field"><label>Urgency</label><select id="n_urg"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div></div>
+    <div class="field"><label>Description *</label><textarea id="n_desc"></textarea></div>
+    <div class="field"><label>Location</label><input id="n_loc"></div>
+    <div class="err" id="n_err"></div>
+    <button class="btn btn-primary btn-block" onclick="saveNewIncident()">Log incident</button>`);
+}
+async function saveNewIncident(){
+  const g=id=>document.getElementById(id).value.trim();const err=document.getElementById("n_err");
+  if(!g("n_desc")){err.textContent="Description is required.";return;}
+  const {data,error}=await sb.from("incidents").insert({source:"staff",client_id:document.getElementById("n_client").value||null,
+    reported_by_user:ME.user.id,incident_type:g("n_type"),description:g("n_desc"),location:g("n_loc"),
+    urgency:document.getElementById("n_urg").value,status:"received",assigned_to:ME.user.id}).select("id").single();
+  if(error){err.textContent=error.message;return;}
+  closeModal();toast("Incident logged","ok");nav("incidents");setTimeout(()=>openIncident(data.id),300);
+}
+async function dl(path){const {data,error}=await sb.storage.from("evidence").createSignedUrl(path,120);
+  if(error){toast("Could not open file","err");return;}window.open(data.signedUrl,"_blank");}
+
+/* ============ CLIENTS ============ */
+views.clients=async()=>{
+  main.innerHTML='<div class="page-head"><h2>Clients</h2><div class="wrap-gap"><button class="btn btn-steel" onclick="importModal(\'clients\')">⬆ Import Excel</button><button class="btn btn-primary" onclick="newClient()">+ Add client</button></div></div><div class="spin"></div>';
+  const {data:cl}=await sb.from("clients").select("*").order("name");CLIENTS=cl||[];
+  const {data:counts}=await sb.from("incidents").select("client_id");
+  const cc=id=>(counts||[]).filter(x=>x.client_id===id).length;
+  main.innerHTML=`<div class="page-head"><h2>Clients</h2><div class="wrap-gap"><button class="btn btn-ghost" onclick="exportData('clients')">⬇ Export</button><button class="btn btn-steel" onclick="importModal('clients')">⬆ Import</button><button class="btn btn-primary" onclick="newClient()">+ Add client</button></div></div>
+    <div class="grid g3">${(cl||[]).map(c=>`<div class="card hover">
+      <h3 style="margin-bottom:4px">${esc(c.name)}</h3>
+      <p class="mute" style="font-size:.86rem;margin:0 0 10px">${esc(c.address||"—")}</p>
+      <div class="kv"><b>Contact</b><span>${esc(c.contact_email||"—")}</span></div>
+      <div class="kv"><b>Phone</b><span>${esc(c.contact_phone||"—")}</span></div>
+      <div class="kv"><b>Incidents</b><span>${cc(c.id)}</span></div>
+      <div class="wrap-gap" style="margin-top:10px">
+        <button class="btn btn-steel btn-sm" onclick="newClientUser('${c.id}','${esc(c.name)}')">+ Portal login</button>
+        <button class="btn btn-sm" style="color:var(--crit);border:1px solid #ff4d4d44;background:none" onclick="deleteClient('${c.id}','${esc(c.name)}')">Delete</button>
+      </div>
+    </div>`).join("")||'<div class="empty">No clients yet.</div>'}</div>`;
+};
+async function deleteClient(id,name){
+  if(!confirm(`Delete client "${name}"? This removes their portal logins. Incidents are kept but unlinked. This cannot be undone.`))return;
+  const res=await callFn("admin-delete",{kind:"client",id});
+  if(!res||!res.ok){toast(res?.error||"Delete failed","err");return;}
+  toast("Client deleted","ok");nav("clients");
+}
+function newClient(){
+  openModal(`<div class="between"><h2 style="margin:0">Add client</h2><button class="x" onclick="closeModal()">×</button></div>
+    <div class="field"><label>Organisation name *</label><input id="c_name"></div>
+    <div class="field"><label>Contact email</label><input id="c_email" type="email"></div>
+    <div class="field"><label>Phone</label><input id="c_phone"></div>
+    <div class="field"><label>Site / address</label><input id="c_addr"></div>
+    <div class="err" id="c_err"></div>
+    <button class="btn btn-primary btn-block" onclick="saveClient()">Add client</button>`);
+}
+async function saveClient(){
+  const g=id=>document.getElementById(id).value.trim();
+  if(!g("c_name")){document.getElementById("c_err").textContent="Name is required.";return;}
+  const {error}=await sb.from("clients").insert({name:g("c_name"),contact_email:g("c_email"),contact_phone:g("c_phone"),address:g("c_addr")});
+  if(error){document.getElementById("c_err").textContent=error.message;return;}
+  closeModal();toast("Client added","ok");nav("clients");
+}
+function newClientUser(clientId,name){
+  openModal(`<div class="between"><h2 style="margin:0">Portal login</h2><button class="x" onclick="closeModal()">×</button></div>
+    <p class="mute">Create a client portal login for <b>${name}</b>.</p>
+    <div class="field"><label>Full name</label><input id="cu_name"></div>
+    <div class="field"><label>Email *</label><input id="cu_email" type="email"></div>
+    <div class="field"><label>Phone</label><input id="cu_phone"></div>
+    <div class="field"><label>Temporary password *</label><input id="cu_pw" placeholder="At least 8 characters"></div>
+    <div class="err" id="cu_err"></div>
+    <button class="btn btn-primary btn-block" id="cu_btn" onclick="saveClientUser('${clientId}')">Create login</button>`);
+}
+async function saveClientUser(clientId){
+  const g=id=>document.getElementById(id).value.trim();const err=document.getElementById("cu_err");err.textContent="";
+  if(!g("cu_email")||g("cu_pw").length<8){err.textContent="Email and 8+ char password required.";return;}
+  const btn=document.getElementById("cu_btn");btn.disabled=true;btn.textContent="Creating…";
+  const res=await callFn("admin-create-user",{kind:"client",client_id:clientId,email:g("cu_email"),password:g("cu_pw"),full_name:g("cu_name"),phone:g("cu_phone")});
+  if(!res||!res.ok){err.textContent=res?.error||"Failed.";btn.disabled=false;btn.textContent="Create login";return;}
+  closeModal();toast("Client login created","ok");
+}
+
+/* ============ INVOICES ============ */
+let INVOICES=[];
+views.invoices=async()=>{
+  main.innerHTML='<div class="page-head"><h2>Invoices</h2><div class="wrap-gap"><button class="btn btn-steel" onclick="importModal(\'invoices\')">⬆ Import</button><button class="btn btn-primary" onclick="newInvoice()">+ New invoice</button></div></div><div class="spin"></div>';
+  const {data:invs}=await sb.from("invoices").select("*").order("issued_date",{ascending:false});INVOICES=invs||[];
+  const badge=s=>({outstanding:'<span class="badge" style="color:var(--gold);border-color:var(--line)">Outstanding</span>',paid:'<span class="badge" style="color:var(--ok);border-color:#4ade8044">Paid</span>',overdue:'<span class="badge" style="color:var(--crit);border-color:#ff4d4d44">Overdue</span>'}[s]);
+  main.innerHTML=`<div class="page-head"><h2>Invoices</h2><div class="wrap-gap"><button class="btn btn-ghost" onclick="exportData('invoices')">⬇ Export</button><button class="btn btn-steel" onclick="importModal('invoices')">⬆ Import</button><button class="btn btn-primary" onclick="newInvoice()">+ New invoice</button></div></div>
+    <div class="tablewrap"><table class="table"><thead><tr><th>Invoice</th><th>Client</th><th>Amount</th><th>Due</th><th>Status</th><th>Sent</th><th style="text-align:right">Actions</th></tr></thead>
+    <tbody>${(invs||[]).map(i=>`<tr><td class="ref">${esc(i.number)}</td><td>${esc(clientName(i.client_id))}</td><td>${money(i.amount,i.currency)}</td>
+      <td>${fmtDate(i.due_date)}</td><td>${badge(i.status)}</td><td>${i.sent_at?`<span class="tag">✓ ${timeAgo(i.sent_at)}</span>`:'<span class="mute">—</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn btn-sm btn-ghost" onclick="invAction('${i.id}','view')">View PDF</button>
+        <button class="btn btn-sm btn-steel" onclick="invAction('${i.id}','send')">Send</button>
+        ${i.status!=="paid"?`<button class="btn btn-sm btn-ghost" onclick="markPaid('${i.id}')">Mark paid</button>`:""}
+      </td></tr>`).join("")
+      ||'<tr><td colspan="7"><div class="empty">No invoices.</div></td></tr>'}</tbody></table></div>`;
+};
+function invAction(id,what){
+  const inv=INVOICES.find(x=>x.id===id);const client=clientObj(inv.client_id);
+  if(!window.jspdf){toast("PDF library still loading, try again","err");return;}
+  if(what==="view"){viewInvoicePdf(inv,client);return;}
+  if(what==="send")sendInvoiceModal(inv,client);
+}
+function sendInvoiceModal(inv,client){
+  openModal(`<div class="between"><h2 style="margin:0">Send invoice ${esc(inv.number)}</h2><button class="x" onclick="closeModal()">×</button></div>
+    <div class="field"><label>To</label><input id="si_to" type="email" value="${esc(client?.contact_email||"")}"></div>
+    <div class="field"><label>Subject</label><input id="si_sub" value="Invoice ${esc(inv.number)} from ${esc(HT_CONFIG.COMPANY.name)}"></div>
+    <div class="field"><label>Message</label><textarea id="si_msg">Good day,\n\nPlease find attached invoice ${esc(inv.number)} for ${money(inv.amount,inv.currency)}, due ${fmtDate(inv.due_date)}.\n\nKind regards,\n${esc(ME.profile.full_name)}</textarea></div>
+    <div class="wrap-gap"><button class="btn btn-ghost btn-sm" onclick="downloadInvoicePdf(INVOICES.find(x=>x.id==='${inv.id}'),clientObj('${inv.client_id}'))">Download PDF</button></div>
+    <div class="err" id="si_err"></div>
+    <button class="btn btn-primary btn-block" id="si_btn" onclick="doSendInvoice('${inv.id}')" style="margin-top:12px">Send invoice</button>
+    <p class="hint">If email delivery isn't configured yet, this downloads the PDF and opens a pre-filled email draft for you to send.</p>`);
+}
+async function doSendInvoice(id){
+  const inv=INVOICES.find(x=>x.id===id);const client=clientObj(inv.client_id);
+  const to=document.getElementById("si_to").value.trim();const err=document.getElementById("si_err");err.textContent="";
+  if(!to){err.textContent="Enter a recipient email.";return;}
+  const btn=document.getElementById("si_btn");btn.disabled=true;btn.textContent="Sending…";
+  const b64=invoicePdfBase64(inv,client);
+  const res=await callFn("send-invoice",{invoice_id:id,to,subject:document.getElementById("si_sub").value,message:document.getElementById("si_msg").value,pdf_b64:b64,filename:(inv.number||"invoice")+".pdf"});
+  if(res&&res.ok&&res.sent){closeModal();toast("Invoice emailed to "+to,"ok");nav("invoices");return;}
+  if(res&&res.ok&&res.sent===false){
+    // No email provider configured yet — reliable fallback: download PDF + open a draft (mailto can't auto-attach)
+    downloadInvoicePdf(inv,client);
+    const body=encodeURIComponent(document.getElementById("si_msg").value+"\n\n(Please attach the downloaded file: "+(inv.number||"invoice")+".pdf)");
+    const a=document.createElement("a");
+    a.href=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(document.getElementById("si_sub").value)}&body=${body}`;
+    document.body.appendChild(a);a.click();a.remove();
+    await sb.from("invoices").update({sent_at:new Date().toISOString()}).eq("id",id);
+    closeModal();
+    toast("PDF downloaded + email draft opened. (Auto-email needs the Resend key — see README.)","ok");
+    nav("invoices");return;
+  }
+  err.textContent=res?.error||"Could not send.";btn.disabled=false;btn.textContent="Send invoice";
+}
+function newInvoice(){
+  openModal(`<div class="between"><h2 style="margin:0">New invoice</h2><button class="x" onclick="closeModal()">×</button></div>
+    <div class="field"><label>Client *</label><select id="i_client">${CLIENTS.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></div>
+    <div class="field"><label>Invoice number *</label><input id="i_num" placeholder="INV-2026-00xx"></div>
+    <div class="field"><label>Description</label><input id="i_desc"></div>
+    <div class="row"><div class="field"><label>Amount (ZAR) *</label><input id="i_amt" type="number" step="0.01"></div>
+      <div class="field"><label>Due date</label><input id="i_due" type="date"></div></div>
+    <div class="err" id="i_err"></div>
+    <button class="btn btn-primary btn-block" onclick="saveInvoice()">Create invoice</button>`);
+}
+async function saveInvoice(){
+  const g=id=>document.getElementById(id).value.trim();const err=document.getElementById("i_err");
+  if(!g("i_num")||!g("i_amt")){err.textContent="Number and amount are required.";return;}
+  const {error}=await sb.from("invoices").insert({client_id:document.getElementById("i_client").value,number:g("i_num"),
+    description:g("i_desc"),amount:parseFloat(g("i_amt")),due_date:g("i_due")||null,status:"outstanding"});
+  if(error){err.textContent=error.message;return;}
+  closeModal();toast("Invoice created","ok");nav("invoices");
+}
+async function markPaid(id){const {error}=await sb.from("invoices").update({status:"paid",paid_date:new Date().toISOString().slice(0,10)}).eq("id",id);
+  if(error){toast(error.message,"err");return;}toast("Marked paid","ok");nav("invoices");}
+
+/* ============ TASKS ============ */
+views.tasks=async()=>{
+  main.innerHTML='<div class="page-head"><h2>Tasks &amp; requests</h2><button class="btn btn-primary" onclick="newTask()">+ New task</button></div><div class="spin"></div>';
+  const {data:tasks}=await sb.from("tasks").select("*").order("created_at",{ascending:false});
+  const st=s=>({open:'<span class="badge" style="color:var(--mute)">Open</span>',in_progress:'<span class="badge" style="color:var(--gold);border-color:var(--line)">In progress</span>',done:'<span class="badge" style="color:var(--ok);border-color:#4ade8044">Done</span>',cancelled:'<span class="badge" style="color:var(--mute)">Cancelled</span>'}[s]);
+  main.innerHTML=`<div class="page-head"><h2>Tasks &amp; requests</h2><button class="btn btn-primary" onclick="newTask()">+ New task</button></div>
+    <div class="tablewrap"><table class="table"><thead><tr><th>Task</th><th>Client</th><th>Source</th><th>Assigned</th><th>Due</th><th>Status</th></tr></thead>
+    <tbody>${(tasks||[]).map(t=>`<tr><td><b>${esc(t.title)}</b><br><small class="mute">${esc(t.description||"")}</small></td>
+      <td>${t.client_id?esc(clientName(t.client_id)):"—"}</td><td>${t.is_client_request?'<span class="tag">Client request</span>':'<span class="tag">Internal</span>'}</td>
+      <td><small>${esc(staffName(t.assigned_to))}</small></td><td>${fmtDate(t.due_date)}</td>
+      <td><select onchange="setTaskStatus('${t.id}',this.value)" style="padding:6px 8px;font-size:.8rem;width:auto">
+        ${["open","in_progress","done","cancelled"].map(s=>`<option value="${s}" ${t.status===s?"selected":""}>${s.replace("_"," ")}</option>`).join("")}</select></td></tr>`).join("")
+      ||'<tr><td colspan="6"><div class="empty">No tasks.</div></td></tr>'}</tbody></table></div>`;
+};
+function newTask(){
+  openModal(`<div class="between"><h2 style="margin:0">New task</h2><button class="x" onclick="closeModal()">×</button></div>
+    <div class="field"><label>Title *</label><input id="k_title"></div>
+    <div class="field"><label>Details</label><textarea id="k_desc"></textarea></div>
+    <div class="row"><div class="field"><label>Client</label><select id="k_client"><option value="">None</option>${CLIENTS.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></div>
+      <div class="field"><label>Assign</label><select id="k_assign"><option value="">Unassigned</option>${STAFF.map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join("")}</select></div></div>
+    <div class="field"><label>Due date</label><input id="k_due" type="date"></div>
+    <div class="err" id="k_err"></div>
+    <button class="btn btn-primary btn-block" onclick="saveTask()">Create task</button>`);
+}
+async function saveTask(){
+  const g=id=>document.getElementById(id).value.trim();const err=document.getElementById("k_err");
+  if(!g("k_title")){err.textContent="Title is required.";return;}
+  const {error}=await sb.from("tasks").insert({title:g("k_title"),description:g("k_desc"),client_id:document.getElementById("k_client").value||null,
+    assigned_to:document.getElementById("k_assign").value||null,due_date:g("k_due")||null,status:"open",is_client_request:false});
+  if(error){err.textContent=error.message;return;}
+  closeModal();toast("Task created","ok");nav("tasks");
+}
+async function setTaskStatus(id,status){const {error}=await sb.from("tasks").update({status}).eq("id",id);
+  if(error)toast(error.message,"err");else toast("Task updated","ok");}
+
+/* ============ USERS ============ */
+views.users=async()=>{
+  main.innerHTML='<div class="page-head"><h2>Users</h2><button class="btn btn-primary" onclick="newStaff()">+ Add staff</button></div><div class="spin"></div>';
+  const [{data:st},{data:cu}]=await Promise.all([
+    sb.from("profiles").select("*").order("created_at"),
+    sb.from("client_users").select("*, clients(name)").order("created_at"),
+  ]);
+  STAFF=st||[];
+  main.innerHTML=`<div class="page-head"><h2>Users</h2><button class="btn btn-primary" onclick="newStaff()">+ Add staff</button></div>
+    <h3>Hornbill staff</h3>
+    <div class="tablewrap" style="margin-bottom:22px"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+    <tbody>${(st||[]).map(s=>`<tr><td><b>${esc(s.full_name||"—")}</b></td><td>${esc(s.email||"—")}</td>
+      <td><span class="tag">${esc(s.role)}</span></td><td>${s.is_active?'<span class="ok">Active</span>':'<span class="mute">Disabled</span>'}</td>
+      <td style="text-align:right">${s.id===ME.user.id?'<span class="mute" style="font-size:.8rem">You</span>':`<button class="btn btn-sm" style="color:var(--crit);border:1px solid #ff4d4d44;background:none" onclick="deleteUser('${s.id}','${esc(s.full_name||s.email)}')">Delete</button>`}</td></tr>`).join("")}</tbody></table></div>
+    <h3>Client portal users</h3>
+    <div class="tablewrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Organisation</th><th style="text-align:right">Actions</th></tr></thead>
+    <tbody>${(cu||[]).map(u=>`<tr><td><b>${esc(u.full_name||"—")}</b></td><td>${esc(u.email||"—")}</td><td>${esc(u.clients?.name||"—")}</td>
+      <td style="text-align:right"><button class="btn btn-sm" style="color:var(--crit);border:1px solid #ff4d4d44;background:none" onclick="deleteUser('${u.id}','${esc(u.full_name||u.email)}')">Delete</button></td></tr>`).join("")
+      ||'<tr><td colspan="4"><div class="empty">No client users yet.</div></td></tr>'}</tbody></table></div>`;
+};
+async function deleteUser(id,label){
+  if(!confirm(`Delete user "${label}"? Their login will be removed permanently.`))return;
+  const res=await callFn("admin-delete",{kind:"user",id});
+  if(!res||!res.ok){toast(res?.error||"Delete failed","err");return;}
+  toast("User deleted","ok");nav("users");
+}
+function newStaff(){
+  openModal(`<div class="between"><h2 style="margin:0">Add staff member</h2><button class="x" onclick="closeModal()">×</button></div>
+    <div class="field"><label>Full name</label><input id="s_name"></div>
+    <div class="field"><label>Email *</label><input id="s_email" type="email"></div>
+    <div class="field"><label>Role</label><select id="s_role"><option value="agent">Agent</option><option value="admin">Admin</option></select></div>
+    <div class="field"><label>Temporary password *</label><input id="s_pw" placeholder="At least 8 characters"></div>
+    <div class="err" id="s_err"></div>
+    <button class="btn btn-primary btn-block" id="s_btn" onclick="saveStaff()">Create staff account</button>`);
+}
+async function saveStaff(){
+  const g=id=>document.getElementById(id).value.trim();const err=document.getElementById("s_err");err.textContent="";
+  if(!g("s_email")||g("s_pw").length<8){err.textContent="Email and 8+ char password required.";return;}
+  const btn=document.getElementById("s_btn");btn.disabled=true;btn.textContent="Creating…";
+  const res=await callFn("admin-create-user",{kind:"staff",email:g("s_email"),password:g("s_pw"),full_name:g("s_name"),role:document.getElementById("s_role").value});
+  if(!res||!res.ok){err.textContent=res?.error||"Failed.";btn.disabled=false;btn.textContent="Create staff account";return;}
+  closeModal();toast("Staff account created","ok");nav("users");
+}
+
+/* ============ AUDIT ============ */
+views.audit=async()=>{
+  main.innerHTML='<div class="page-head"><h2>Audit trail</h2></div><div class="spin"></div>';
+  const {data:log}=await sb.from("audit_log").select("*").order("created_at",{ascending:false}).limit(200);
+  main.innerHTML=`<div class="page-head"><h2>Audit trail</h2></div>
+    <div class="tablewrap"><table class="table"><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Detail</th></tr></thead>
+    <tbody>${(log||[]).map(l=>`<tr><td><small>${fmtDateTime(l.created_at)}</small></td><td>${esc(l.actor_label||"—")}</td>
+      <td><span class="tag">${esc(l.action)}</span></td><td>${esc(l.entity||"—")}</td>
+      <td><small class="mute">${esc(l.meta?JSON.stringify(l.meta):"")}</small></td></tr>`).join("")
+      ||'<tr><td colspan="5"><div class="empty">No audit entries.</div></td></tr>'}</tbody></table></div>`;
+};
+
+/* ============ EXCEL IMPORT ============ */
+const IMPORT_SPEC={
+  clients:{title:"Clients",headers:["name","contact_email","contact_phone","address"],
+    sample:["ABC Property Management","ops@abcproperty.co.za","012 555 0101","Monument Park, Pretoria"]},
+  invoices:{title:"Invoices",headers:["number","client_name","description","amount","currency","issued_date","due_date","status"],
+    sample:["INV-2026-0100","ABC Property Management","Monthly guarding — Aug","12500","ZAR","2026-08-01","2026-08-15","outstanding"]},
+  incidents:{title:"Incidents",headers:["incident_type","description","location","client_name","urgency","incident_date","incident_time","status","source","contact_name","contact_email","contact_phone"],
+    sample:["Suspicious Activity","Loitering at gate","North Gate","ABC Property Management","high","2026-08-10","21:40","received","staff","","",""]},
+};
+/* Branded workbook writer (Hornbill gold + charcoal) using ExcelJS */
+async function saveBrandedXlsx(fname, sheetName, headers, rows, title){
+  const wb=new ExcelJS.Workbook();wb.creator="Hornbill Tactical";wb.created=new Date();
+  const ws=wb.addWorksheet(sheetName,{views:[{state:"frozen",ySplit:2}],properties:{defaultRowHeight:18}});
+  const n=headers.length;
+  ws.mergeCells(1,1,1,n);
+  const t=ws.getCell(1,1);
+  t.value="  🦅  "+title;
+  t.font={name:"Arial",size:14,bold:true,color:{argb:"FFF5A623"}};
+  t.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF0A0B0D"}};
+  t.alignment={vertical:"middle",horizontal:"left"};
+  ws.getRow(1).height=30;
+  const hr=ws.getRow(2);
+  headers.forEach((h,i)=>{const c=hr.getCell(i+1);c.value=h;
+    c.font={name:"Arial",bold:true,size:11,color:{argb:"FF1A1205"}};
+    c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF5A623"}};
+    c.alignment={vertical:"middle"};
+    c.border={bottom:{style:"medium",color:{argb:"FFBE8319"}}};});
+  hr.height=24;
+  rows.forEach((row,ri)=>{const r=ws.getRow(ri+3);
+    headers.forEach((h,ci)=>{const c=r.getCell(ci+1);const v=row[h];
+      c.value=(v instanceof Date)?v:(v??"");
+      c.font={name:"Arial",size:10,color:{argb:"FF14171B"}};
+      c.fill={type:"pattern",pattern:"solid",fgColor:{argb:ri%2?"FFFDF7EC":"FFFFFFFF"}};
+      c.border={bottom:{style:"hair",color:{argb:"FFE7C98A"}},right:{style:"hair",color:{argb:"FFF0E4CC"}}};
+      c.alignment={vertical:"middle"};});
+    r.height=18;});
+  headers.forEach((h,i)=>{let w=h.length+4;rows.forEach(r=>{const s=String(r[h]??"");if(s.length+3>w)w=s.length+3;});ws.getColumn(i+1).width=Math.max(14,Math.min(46,w));});
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fname;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+async function downloadTemplate(kind){
+  const s=IMPORT_SPEC[kind];const sample={};s.headers.forEach((h,i)=>sample[h]=s.sample[i]);
+  await saveBrandedXlsx(`hornbill-${kind}-template.xlsx`,s.title,s.headers,[sample],`HORNBILL TACTICAL · ${s.title.toUpperCase()} IMPORT TEMPLATE`);
+  toast("Branded template downloaded","ok");
+}
+function importModal(kind){
+  const s=IMPORT_SPEC[kind];
+  openModal(`<div class="between"><h2 style="margin:0">Import ${s.title}</h2><button class="x" onclick="closeModal()">×</button></div>
+    <p class="mute" style="font-size:.9rem">Upload an <b>.xlsx</b> or <b>.csv</b> with columns: ${s.headers.map(h=>`<span class="tag">${h}</span>`).join(" ")}</p>
+    <div class="wrap-gap" style="margin-bottom:12px"><button class="btn btn-ghost btn-sm" onclick="downloadTemplate('${kind}')">⬇ Download template</button></div>
+    <input type="file" id="imp_file" accept=".xlsx,.xls,.csv" onchange="previewImport('${kind}')">
+    <div id="imp_preview" style="margin-top:14px"></div>
+    <div class="err" id="imp_err"></div>`);
+}
+let IMPORT_ROWS=[];
+function previewImport(kind){
+  const f=document.getElementById("imp_file").files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=(e)=>{
+    try{
+      const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array",cellDates:true});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
+      IMPORT_ROWS=rows;
+      const cols=IMPORT_SPEC[kind].headers;
+      const head=cols.map(c=>`<th>${c}</th>`).join("");
+      const body=rows.slice(0,6).map(row=>`<tr>${cols.map(c=>`<td><small>${esc(fmtCell(row[c]))}</small></td>`).join("")}</tr>`).join("");
+      document.getElementById("imp_preview").innerHTML=`<p class="mute" style="font-size:.85rem">${rows.length} row(s) found. Preview:</p>
+        <div class="tablewrap" style="max-height:220px;overflow:auto"><table class="table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+        <button class="btn btn-primary btn-block" style="margin-top:12px" id="imp_btn" onclick="runImport('${kind}')">Import ${rows.length} ${IMPORT_SPEC[kind].title.toLowerCase()}</button>`;
+    }catch(err){document.getElementById("imp_err").textContent="Could not read file: "+err.message;}
+  };
+  r.readAsArrayBuffer(f);
+}
+function fmtCell(v){if(v instanceof Date)return v.toISOString().slice(0,10);return String(v??"");}
+const toDate=v=>{if(!v)return null;if(v instanceof Date)return v.toISOString().slice(0,10);const d=new Date(v);return isNaN(d)?null:d.toISOString().slice(0,10);};
+const findClient=n=>{if(!n)return null;const m=CLIENTS.find(c=>c.name.toLowerCase().trim()===String(n).toLowerCase().trim());return m?m.id:null;};
+async function runImport(kind){
+  const btn=document.getElementById("imp_btn");btn.disabled=true;btn.textContent="Importing…";
+  const err=document.getElementById("imp_err");err.textContent="";
+  let payload=[],skipped=0;
+  for(const row of IMPORT_ROWS){
+    if(kind==="clients"){
+      if(!row.name)continue;
+      payload.push({name:String(row.name),contact_email:row.contact_email||null,contact_phone:row.contact_phone||null,address:row.address||null});
+    }else if(kind==="invoices"){
+      const cid=findClient(row.client_name);if(!cid||!row.number){skipped++;continue;}
+      payload.push({client_id:cid,number:String(row.number),description:row.description||null,amount:parseFloat(row.amount)||0,
+        currency:row.currency||"ZAR",issued_date:toDate(row.issued_date)||new Date().toISOString().slice(0,10),
+        due_date:toDate(row.due_date),status:["outstanding","paid","overdue"].includes(row.status)?row.status:"outstanding"});
+    }else if(kind==="incidents"){
+      if(!row.incident_type)continue;
+      payload.push({source:["staff","client","guest"].includes(row.source)?row.source:"staff",client_id:findClient(row.client_name),
+        incident_type:String(row.incident_type),description:row.description||null,location:row.location||null,
+        urgency:["low","medium","high","critical"].includes(row.urgency)?row.urgency:"medium",
+        incident_date:toDate(row.incident_date),incident_time:row.incident_time||null,
+        status:STATUS_ORDER.includes(row.status)?row.status:"received",
+        contact_name:row.contact_name||null,contact_email:row.contact_email||null,contact_phone:row.contact_phone||null,reported_by_user:ME.user.id});
+    }
+  }
+  if(!payload.length){err.textContent="No valid rows to import"+(skipped?` (${skipped} skipped — check client names match existing clients).`:".");btn.disabled=false;btn.textContent="Import";return;}
+  const {error}=await sb.from(kind).insert(payload);
+  if(error){err.textContent=error.message;btn.disabled=false;btn.textContent="Import";return;}
+  await sb.from("audit_log").insert({actor:ME.user.id,actor_label:ME.profile.full_name,action:kind+".imported",entity:kind,meta:{count:payload.length,skipped}});
+  closeModal();toast(`Imported ${payload.length} ${kind}${skipped?` (${skipped} skipped)`:""}`,"ok");nav(kind);
+}
+
+/* ============ EXCEL EXPORT ============ */
+async function exportData(kind){
+  let rows=[];
+  if(kind==="clients"){const {data}=await sb.from("clients").select("*").order("name");
+    rows=(data||[]).map(c=>({name:c.name,contact_email:c.contact_email,contact_phone:c.contact_phone,address:c.address,is_active:c.is_active}));}
+  else if(kind==="invoices"){const {data}=await sb.from("invoices").select("*").order("issued_date",{ascending:false});
+    rows=(data||[]).map(i=>({number:i.number,client_name:clientName(i.client_id),description:i.description,amount:i.amount,currency:i.currency,issued_date:i.issued_date,due_date:i.due_date,status:i.status,sent_at:i.sent_at}));}
+  else if(kind==="incidents"){const {data}=await sb.from("incidents").select("*").order("created_at",{ascending:false});
+    rows=(data||[]).map(i=>({reference:i.reference,source:i.source,incident_type:i.incident_type,client_name:i.client_id?clientName(i.client_id):"",status:i.status,urgency:i.urgency,location:i.location,incident_date:i.incident_date,incident_time:i.incident_time,contact_name:i.contact_name,contact_email:i.contact_email,contact_phone:i.contact_phone,created_at:i.created_at}));}
+  if(!rows.length){toast("Nothing to export","err");return;}
+  const headers=Object.keys(rows[0]);
+  await saveBrandedXlsx(`hornbill-${kind}-${new Date().toISOString().slice(0,10)}.xlsx`,kind,headers,rows,
+    `HORNBILL TACTICAL · ${kind.toUpperCase()} EXPORT · ${new Date().toLocaleDateString("en-ZA")}`);
+  toast("Exported "+rows.length+" "+kind,"ok");
+}
+</script>
+</body>
+</html>

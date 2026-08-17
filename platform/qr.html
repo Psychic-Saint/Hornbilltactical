@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>QR Incident Reporting — Hornbill Tactical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+.qwrap{max-width:900px;margin:0 auto;padding:30px 0 60px}
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+@media(max-width:760px){.qgrid{grid-template-columns:1fr}}
+/* Printable card */
+.qcard{background:#0a0b0d;border:1px solid var(--line);border-radius:18px;padding:30px;text-align:center;color:#fff}
+.qcard .top{font-family:var(--font-d);color:var(--gold);letter-spacing:.22em;text-transform:uppercase;font-size:.75rem}
+.qcard h2{font-size:1.9rem;margin:10px 0 4px}
+.qcard .qbox{background:#fff;display:inline-block;padding:14px;border-radius:12px;margin:16px 0}
+.qcard .site{font-family:var(--font-d);color:var(--gold);font-size:1.1rem;margin-top:4px}
+.qcard .foot{color:#8b929c;font-size:.82rem;margin-top:8px}
+@media print{body *{visibility:hidden}#print,#print *{visibility:visible}#print{position:absolute;left:0;top:0;width:100%}
+  .qcard{border:2px solid #F5A623}}
+</style>
+</head>
+<body>
+<header class="nav"><div class="wrap">
+  <a class="brand" href="index.html"><img src="assets/Hornbill_Mark_gold.png" alt=""> HORNBILL <b>TACTICAL</b></a>
+  <a class="btn btn-ghost btn-sm" href="staff/console.html">Console</a>
+</div></header>
+
+<div class="wrap"><div class="qwrap">
+  <h1>QR incident <span class="g">reporting</span></h1>
+  <p class="mute">Generate a QR code for any site. When scanned it opens Hornbill's reporting page — visitors can log in or file a quick report without an account. Ideal for premises, estates, control rooms, retail, parking and offices.</p>
+
+  <div class="qgrid">
+    <div class="card">
+      <h3>Generate a code</h3>
+      <div class="field"><label>Site / location label</label><input id="site" placeholder="e.g. ABC Estate — North Gate" oninput="gen()"></div>
+      <div class="field"><label>Deployed platform URL <small>(where these files are hosted)</small></label>
+        <input id="base" oninput="gen()"><div class="hint">The QR must point to a public URL. Update this to your live domain before printing.</div></div>
+      <div class="field"><label>Opens</label><select id="dest" onchange="gen()">
+        <option value="report.html">Report chooser (login or quick report)</option>
+        <option value="quick-report.html">Straight to quick report</option>
+      </select></div>
+      <div class="wrap-gap"><button class="btn btn-primary" onclick="downloadPng()">Download QR (PNG)</button>
+        <button class="btn btn-steel" onclick="window.print()">Print card</button></div>
+      <p class="hint" id="urlout" style="margin-top:12px;word-break:break-all"></p>
+    </div>
+
+    <div id="print">
+      <div class="qcard">
+        <div class="top">🚨 Report an incident</div>
+        <h2>Scan to report</h2>
+        <div class="qbox"><div id="qr"></div></div>
+        <div class="site" id="cardSite">This location</div>
+        <div class="foot">Hornbill Tactical · No account required · <span id="cardPhone"></span></div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+<script src="config.js"></script>
+<script>
+document.getElementById("base").value=location.href.replace(/\/qr\.html.*$/,"");
+document.getElementById("cardPhone").textContent=HT_CONFIG.PHONE;
+let qr;
+function targetUrl(){
+  const base=document.getElementById("base").value.replace(/\/+$/,"");
+  const dest=document.getElementById("dest").value;
+  const site=document.getElementById("site").value.trim();
+  return base+"/"+dest+(site?"?site="+encodeURIComponent(site):"");
+}
+function gen(){
+  const url=targetUrl();
+  document.getElementById("urlout").textContent=url;
+  document.getElementById("cardSite").textContent=document.getElementById("site").value.trim()||"This location";
+  document.getElementById("qr").innerHTML="";
+  qr=new QRCode(document.getElementById("qr"),{text:url,width:190,height:190,colorDark:"#0a0b0d",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});
+}
+function downloadPng(){
+  const cv=document.querySelector("#qr canvas");
+  if(!cv){alert("Generate a code first");return;}
+  const a=document.createElement("a");a.download="hornbill-qr.png";a.href=cv.toDataURL("image/png");a.click();
+}
+gen();
+</script>
+</body>
+</html>

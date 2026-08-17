@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Client Login — Hornbill Tactical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>.auth{max-width:420px;margin:0 auto;padding:44px 0}
+.auth .brand{justify-content:center;margin-bottom:8px;font-size:1.2rem}
+.forgot{background:none;border:0;color:var(--gold);cursor:pointer;font-size:.85rem;padding:0}
+.report-strip{position:fixed;bottom:0;left:0;right:0;background:var(--char);border-top:1px solid var(--line2);padding:12px;text-align:center;z-index:30}</style>
+</head>
+<body>
+<div class="wrap"><div class="auth">
+  <a class="brand" href="../index.html"><img src="../assets/Hornbill_Mark_gold.png" alt="" style="height:34px"> HORNBILL <b class="g">TACTICAL</b></a>
+  <p class="center mute">Client portal</p>
+
+  <div class="card gold" style="margin-top:20px">
+    <h2 style="margin-bottom:4px">Welcome back</h2>
+    <p class="mute" style="font-size:.9rem;margin-top:0">Log in to report and track incidents, and view invoices.</p>
+    <div class="field"><label>Email</label><input id="email" type="email" placeholder="you@company.co.za" autocomplete="username"></div>
+    <div class="field"><label>Password</label><input id="password" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+    <div class="between" style="margin-bottom:16px">
+      <label class="check" style="margin:0"><input type="checkbox" id="remember" checked> Remember me</label>
+      <button class="forgot" onclick="forgot()">Forgot password?</button>
+    </div>
+    <div class="err" id="err"></div>
+    <button class="btn btn-primary btn-block" id="btn" onclick="login()">Log in</button>
+    <p class="center mute" style="margin-top:16px;font-size:.9rem">New to Hornbill? <a href="signup.html" class="g">Create an account</a></p>
+  </div>
+  <p class="center" style="margin-top:16px"><a class="mute" href="../report.html" style="font-size:.85rem">← Back to reporting options</a></p>
+</div></div>
+
+<div class="report-strip"><a class="btn btn-report btn-sm" href="../quick-report.html">🚨 Report an incident (no login)</a></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../config.js"></script>
+<script src="../app.js"></script>
+<script>
+(async()=>{const me=await whoami();if(me?.kind==="client")location.href="portal.html";if(me?.kind==="staff")location.href="../staff/console.html";})();
+const em=document.getElementById("email");
+async function login(){
+  const err=document.getElementById("err");err.textContent="";
+  const email=em.value.trim(),password=document.getElementById("password").value;
+  if(!email||!password){err.textContent="Enter your email and password.";return;}
+  const btn=document.getElementById("btn");btn.disabled=true;btn.textContent="Logging in…";
+  const { data, error }=await sb.auth.signInWithPassword({email,password});
+  if(error){err.textContent="Invalid email or password.";btn.disabled=false;btn.textContent="Log in";return;}
+  // confirm this is a client account
+  const { data:cu }=await sb.from("client_users").select("id").eq("id",data.user.id).maybeSingle();
+  if(!cu){const { data:prof }=await sb.from("profiles").select("id").eq("id",data.user.id).maybeSingle();
+    if(prof){location.href="../staff/console.html";return;}
+    err.textContent="This account isn't set up as a client account.";await sb.auth.signOut();btn.disabled=false;btn.textContent="Log in";return;}
+  location.href="portal.html";
+}
+async function forgot(){
+  const email=em.value.trim();if(!email){toast("Enter your email first, then tap Forgot password","err");em.focus();return;}
+  const { error }=await sb.auth.resetPasswordForEmail(email,{redirectTo:new URL("../reset.html",location.href).href});
+  if(error)toast(error.message,"err");else toast("If that email exists, a reset link has been sent.","ok");
+}
+document.getElementById("password").addEventListener("keydown",e=>{if(e.key==="Enter")login();});
+</script>
+<script src="../fx.js"></script>
+</body>
+</html>

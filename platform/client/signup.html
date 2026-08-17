@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create Client Account — Hornbill Tactical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>.auth{max-width:440px;margin:0 auto;padding:40px 0 70px}
+.auth .brand{justify-content:center;margin-bottom:8px;font-size:1.2rem}
+.claim{background:rgba(245,166,35,.08);border:1px solid var(--line);border-radius:11px;padding:12px 14px;font-size:.9rem;margin-bottom:16px}</style>
+</head>
+<body>
+<div class="wrap"><div class="auth">
+  <a class="brand" href="../index.html"><img src="../assets/Hornbill_Mark_gold.png" alt="" style="height:34px"> HORNBILL <b class="g">TACTICAL</b></a>
+  <p class="center mute">Create your free client account</p>
+
+  <div class="card gold" style="margin-top:18px">
+    <div id="claimNote" class="claim hide"></div>
+    <div class="field"><label>Full name</label><input id="full_name" placeholder="Your name"></div>
+    <div class="field"><label>Organisation / property name <small>(optional)</small></label><input id="org_name" placeholder="e.g. ABC Property Management"></div>
+    <div class="field"><label>Email *</label><input id="email" type="email" autocomplete="username" placeholder="you@company.co.za"></div>
+    <div class="field"><label>Phone <small>(optional)</small></label><input id="phone" type="tel" placeholder="071 234 5678"></div>
+    <div class="field"><label>Password *</label><input id="password" type="password" autocomplete="new-password" placeholder="At least 8 characters"></div>
+    <div class="err" id="err"></div>
+    <button class="btn btn-primary btn-block" id="btn" onclick="signup()">Create account</button>
+    <p class="center mute" style="margin-top:16px;font-size:.9rem">Already have an account? <a href="login.html" class="g">Log in</a></p>
+  </div>
+  <p class="center" style="margin-top:14px"><a class="mute" href="../index.html" style="font-size:.85rem">← Home</a></p>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../config.js"></script>
+<script src="../app.js"></script>
+<script>
+const ref=qs("ref"), preEmail=qs("email");
+if(preEmail)document.getElementById("email").value=preEmail;
+if(ref){const n=document.getElementById("claimNote");n.classList.remove("hide");
+  n.innerHTML=`📎 Your incident <b class="g">${esc(ref)}</b> will be linked to this account automatically. Use the same email you reported with.`;}
+async function signup(){
+  const err=document.getElementById("err");err.textContent="";
+  const email=document.getElementById("email").value.trim(),password=document.getElementById("password").value;
+  const full_name=document.getElementById("full_name").value.trim();
+  if(!email||!password){err.textContent="Email and password are required.";return;}
+  if(password.length<8){err.textContent="Password must be at least 8 characters.";return;}
+  const btn=document.getElementById("btn");btn.disabled=true;btn.textContent="Creating…";
+  const res=await callFn("client-signup",{full_name,org_name:document.getElementById("org_name").value.trim(),
+    email,password,phone:document.getElementById("phone").value.trim(),claim_reference:ref||""});
+  if(!res||!res.ok){err.textContent=res?.error||"Could not create account.";btn.disabled=false;btn.textContent="Create account";return;}
+  const { error }=await sb.auth.signInWithPassword({email,password});
+  if(error){toast("Account created. Please log in.","ok");location.href="login.html";return;}
+  if(ref&&res.claimed)toast("Incident "+ref+" linked to your account","ok");
+  else if(ref&&!res.claimed)toast("Account created. Incident could not be auto-linked — check the email matches.","");
+  location.href="portal.html";
+}
+document.getElementById("password").addEventListener("keydown",e=>{if(e.key==="Enter")signup();});
+</script>
+<script src="../fx.js"></script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hornbill Tactical — Incident Reporting & Client Portal</title>
+<meta name="description" content="Report a security incident to Hornbill Tactical in under two minutes — no account required — or log in to your client portal to track incidents, invoices and updates.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+.hero{min-height:calc(100vh - 64px);display:flex;align-items:center;padding:40px 0}
+.hero-inner{max-width:760px}
+.eyebrow{font-family:var(--font-d);color:var(--gold);text-transform:uppercase;letter-spacing:.22em;font-size:.8rem;margin-bottom:18px}
+.tagline{font-family:var(--font-d);color:var(--mute);font-size:1.15rem;letter-spacing:.02em;margin:6px 0 30px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:640px}
+@media(max-width:620px){.actions{grid-template-columns:1fr}}
+.action{padding:26px 24px;border-radius:16px;border:1px solid var(--line2);background:linear-gradient(180deg,var(--char),var(--steel2));display:flex;flex-direction:column;gap:12px;transition:.25s var(--ease)}
+.action:hover{border-color:var(--gold);transform:translateY(-3px)}
+.action.report{border-color:rgba(255,77,77,.35)}
+.action h3{font-size:1.35rem;margin:0}
+.action p{color:var(--mute);font-size:.95rem;margin:0;flex:1}
+.action .ico{font-size:1.8rem}
+.subnote{margin-top:18px;color:var(--mute);font-size:.9rem;display:flex;align-items:center;gap:8px}
+.trust{display:flex;gap:22px;flex-wrap:wrap;margin-top:40px;color:var(--mute);font-size:.85rem}
+.trust b{color:var(--ink);font-family:var(--font-d)}
+</style>
+</head>
+<body>
+<header class="nav"><div class="wrap">
+  <a class="brand" href="index.html"><img src="assets/Hornbill_Mark_gold.png" alt=""> HORNBILL <b>TACTICAL</b></a>
+  <div class="nav-actions">
+    <a class="btn btn-ghost btn-sm" href="track.html">Track incident</a>
+    <a class="btn btn-steel btn-sm" href="client/login.html">🔐 Client login</a>
+  </div>
+</div></header>
+
+<div class="spotlight"></div>
+<section class="hero"><canvas class="hero3d" id="hero3d"></canvas><div class="wrap"><div class="hero-inner">
+  <div class="eyebrow">Security · Response · Accountability</div>
+  <h1>Hornbill Tactical<br><span class="g">Operations Platform</span></h1>
+  <p class="tagline">Report an incident in under two minutes, or access your client portal.</p>
+
+  <div class="actions">
+    <a class="action report" href="report.html">
+      <div class="ico">🚨</div>
+      <h3>Report an incident</h3>
+      <p>Report a security incident quickly. Our control room is notified immediately.</p>
+      <span class="btn btn-report btn-block">🚨 REPORT AN INCIDENT</span>
+    </a>
+    <a class="action" href="client/login.html">
+      <div class="ico">🔐</div>
+      <h3>Client login</h3>
+      <p>Access your client portal to track incidents, view invoices and receive updates.</p>
+      <span class="btn btn-ghost btn-block">Client login</span>
+    </a>
+  </div>
+
+  <div class="subnote">✓ No account required. Quick reporting available for members of the public.</div>
+
+  <div class="trust">
+    <span><b>PSIRA</b> registered</span>
+    <span><b>24/7</b> control room</span>
+    <span>Armed response · Pretoria &amp; Gauteng</span>
+    <span>Emergency: <b id="phone"></b></span>
+  </div>
+</div></div></section>
+
+<script src="config.js"></script>
+<script>document.getElementById("phone").textContent=window.HT_CONFIG.PHONE;</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* Lightweight 3D hero: rotating wireframe core + gold particle field */
+(function(){
+  if(!window.THREE||window.matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  const cv=document.getElementById("hero3d");if(!cv)return;
+  const sec=cv.parentElement;
+  const renderer=new THREE.WebGLRenderer({canvas:cv,alpha:true,antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  const scene=new THREE.Scene();
+  const cam=new THREE.PerspectiveCamera(55,1,.1,100);cam.position.z=6;
+  function size(){const w=sec.clientWidth,h=sec.clientHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}
+  // core
+  const geo=new THREE.IcosahedronGeometry(2.1,1);
+  const wire=new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0xF5A623,transparent:true,opacity:.55}));
+  const inner=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0x1a1205,transparent:true,opacity:.25}));
+  const core=new THREE.Group();core.add(inner);core.add(wire);scene.add(core);
+  // particles
+  const N=520,pos=new Float32Array(N*3);
+  for(let i=0;i<N;i++){const r=4+Math.random()*7,t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1);
+    pos[i*3]=r*Math.sin(p)*Math.cos(t);pos[i*3+1]=r*Math.sin(p)*Math.sin(t);pos[i*3+2]=r*Math.cos(p);}
+  const pg=new THREE.BufferGeometry();pg.setAttribute("position",new THREE.BufferAttribute(pos,3));
+  const pts=new THREE.Points(pg,new THREE.PointsMaterial({color:0xF5A623,size:.04,transparent:true,opacity:.7}));
+  scene.add(pts);
+  let mx=0,my=0;addEventListener("pointermove",e=>{mx=(e.clientX/innerWidth-.5);my=(e.clientY/innerHeight-.5);});
+  size();addEventListener("resize",size);
+  (function loop(){requestAnimationFrame(loop);
+    core.rotation.y+=.0035;core.rotation.x+=.0015;pts.rotation.y-=.0006;
+    cam.position.x+=(mx*1.4-cam.position.x)*.04;cam.position.y+=(-my*1.0-cam.position.y)*.04;cam.lookAt(0,0,0);
+    renderer.render(scene,cam);})();
+})();
+</script>
+<script src="fx.js"></script>
+</body>
+</html>

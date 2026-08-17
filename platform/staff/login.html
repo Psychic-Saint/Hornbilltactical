@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Staff Login — Hornbill Tactical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../styles.css">
+<style>.auth{max-width:420px;margin:0 auto;padding:60px 0}
+.auth .brand{justify-content:center;margin-bottom:8px;font-size:1.2rem}
+.secure{display:inline-flex;gap:6px;font-size:.78rem;color:var(--mute);border:1px solid var(--line2);padding:5px 11px;border-radius:999px}</style>
+</head>
+<body>
+<div class="wrap"><div class="auth">
+  <a class="brand" href="../index.html"><img src="../assets/Hornbill_Mark_gold.png" alt="" style="height:34px"> HORNBILL <b class="g">TACTICAL</b></a>
+  <p class="center"><span class="secure">🛡️ Internal team portal</span></p>
+  <div class="card gold" style="margin-top:18px">
+    <h2 style="margin-bottom:4px">Staff sign in</h2>
+    <p class="mute" style="font-size:.9rem;margin-top:0">Authorised Hornbill personnel only.</p>
+    <div class="field"><label>Email</label><input id="email" type="email" autocomplete="username" placeholder="you@hornbilltactical.co.za"></div>
+    <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+    <div class="between" style="margin-bottom:16px">
+      <label class="check" style="margin:0"><input type="checkbox" id="remember" checked> Keep me signed in</label>
+      <button style="background:none;border:0;color:var(--gold);cursor:pointer;font-size:.85rem;padding:0" onclick="forgot()">Forgot password?</button>
+    </div>
+    <div class="err" id="err"></div>
+    <button class="btn btn-primary btn-block" id="btn" onclick="login()">Sign in</button>
+  </div>
+  <p class="center" style="margin-top:14px"><a class="mute" href="../index.html" style="font-size:.85rem">← Public site</a></p>
+</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../config.js"></script>
+<script src="../app.js"></script>
+<script>
+(async()=>{const me=await whoami();if(me?.kind==="staff")location.href="console.html";if(me?.kind==="client")location.href="../client/portal.html";})();
+async function login(){
+  const err=document.getElementById("err");err.textContent="";
+  const email=document.getElementById("email").value.trim(),password=document.getElementById("password").value;
+  if(!email||!password){err.textContent="Enter your email and password.";return;}
+  const btn=document.getElementById("btn");btn.disabled=true;btn.textContent="Signing in…";
+  const {data,error}=await sb.auth.signInWithPassword({email,password});
+  if(error){err.textContent="Invalid credentials.";btn.disabled=false;btn.textContent="Sign in";return;}
+  const {data:prof}=await sb.from("profiles").select("id").eq("id",data.user.id).maybeSingle();
+  if(!prof){err.textContent="This account is not a staff account.";await sb.auth.signOut();btn.disabled=false;btn.textContent="Sign in";return;}
+  location.href="console.html";
+}
+async function forgot(){
+  const email=document.getElementById("email").value.trim();
+  if(!email){toast("Enter your email first, then tap Forgot password","err");document.getElementById("email").focus();return;}
+  const { error }=await sb.auth.resetPasswordForEmail(email,{redirectTo:new URL("../reset.html",location.href).href});
+  if(error)toast(error.message,"err");else toast("If that email exists, a reset link has been sent.","ok");
+}
+document.getElementById("password").addEventListener("keydown",e=>{if(e.key==="Enter")login();});
+</script>
+<script src="../fx.js"></script>
+</body>
+</html>

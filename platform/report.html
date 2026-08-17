@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Report an Incident — Hornbill Tactical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+.choose{max-width:760px;margin:0 auto;padding:40px 0}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:26px}
+@media(max-width:620px){.opts{grid-template-columns:1fr}}
+.opt{padding:28px 24px;border-radius:16px;border:1px solid var(--line2);background:linear-gradient(180deg,var(--char),var(--steel2));display:flex;flex-direction:column;gap:12px}
+.opt.b{border-color:var(--line)}
+.opt h3{margin:0;font-size:1.3rem}
+.opt p{color:var(--mute);font-size:.94rem;flex:1;margin:0}
+.opt .tagline{font-family:var(--font-d);font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;color:var(--gold)}
+.back{color:var(--mute);font-size:.9rem;display:inline-flex;gap:6px;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="spotlight"></div>
+<header class="nav"><div class="wrap">
+  <a class="brand" href="index.html"><img src="assets/Hornbill_Mark_gold.png" alt=""> HORNBILL <b>TACTICAL</b></a>
+  <a class="btn btn-ghost btn-sm" href="track.html">Track incident</a>
+</div></header>
+
+<div class="wrap"><div class="choose">
+  <a class="back" href="index.html">← Back</a>
+  <h1>🚨 Report an <span class="g">incident</span></h1>
+  <p class="mute">Choose how you'd like to report. If it's an emergency in progress, call <b id="ph" class="g"></b> now.</p>
+
+  <div class="opts">
+    <div class="opt">
+      <span class="tagline">Option A · Hornbill clients</span>
+      <h3>Login / Sign up</h3>
+      <p>Already a Hornbill client? Log in to report the incident and track its progress from your client portal.</p>
+      <a class="btn btn-ghost btn-block" href="client/login.html">LOGIN / SIGN UP</a>
+    </div>
+    <div class="opt b">
+      <span class="tagline">Option B · Fastest</span>
+      <h3>Quick report</h3>
+      <p>Need to report an incident immediately? Submit without creating an account — takes about a minute.</p>
+      <a class="btn btn-primary btn-block" href="quick-report.html">QUICK INCIDENT REPORT</a>
+    </div>
+  </div>
+  <p class="mute" style="margin-top:22px;font-size:.88rem">✓ You do not need to log in to report. Guests receive a reference number to track their incident.</p>
+</div></div>
+
+<script src="config.js"></script>
+<script>
+document.getElementById("ph").textContent=window.HT_CONFIG.EMERGENCY;
+// Carry QR "site" context through to the report + login links
+const site=new URLSearchParams(location.search).get("site");
+if(site){document.querySelectorAll("a.btn").forEach(a=>{
+  const href=a.getAttribute("href");
+  if(href&&(href.includes("quick-report.html")||href.includes("login.html"))){
+    a.setAttribute("href",href+(href.includes("?")?"&":"?")+"site="+encodeURIComponent(site));}
+});
+}
+</script>
+<script src="fx.js"></script>
+</body>
+</html>

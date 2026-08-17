@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quick Incident Report — Hornbill Tactical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+.rep{max-width:600px;margin:0 auto;padding:30px 0 60px}
+.step{display:none;animation:fade .3s var(--ease)}
+.step.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}}
+.nav-btns{display:flex;gap:12px;margin-top:22px}
+.nav-btns .btn{flex:1}
+.hp{position:absolute;left:-9999px;opacity:0;height:0;width:0}
+.filepick{border:1.5px dashed var(--line);border-radius:12px;padding:22px;text-align:center;color:var(--mute);cursor:pointer}
+.filepick:hover{border-color:var(--gold);color:var(--gold)}
+.filerow{display:flex;justify-content:space-between;align-items:center;background:var(--steel2);border-radius:9px;padding:9px 12px;margin-top:8px;font-size:.85rem}
+.rev-item{padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.rev-item b{color:var(--mute);font-weight:500;display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
+.success{text-align:center;padding:20px 0}
+.refbox{font-family:var(--font-d);font-size:1.8rem;color:var(--gold);letter-spacing:.02em;background:var(--steel2);border:1px solid var(--line);border-radius:12px;padding:16px;margin:18px 0}
+.emergency{background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.3);border-radius:11px;padding:12px 15px;font-size:.9rem;margin-bottom:20px}
+.urg-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.urg-grid label{border:1px solid var(--line2);border-radius:10px;padding:11px 6px;text-align:center;cursor:pointer;font-size:.85rem;font-family:var(--font-d);color:var(--mute);margin:0}
+.urg-grid input{display:none}
+.urg-grid input:checked+span{color:var(--gold)}
+.urg-grid label:has(input:checked){border-color:var(--gold);background:rgba(245,166,35,.08)}
+</style>
+</head>
+<body>
+<header class="nav"><div class="wrap">
+  <a class="brand" href="index.html"><img src="assets/Hornbill_Mark_gold.png" alt=""> HORNBILL <b>TACTICAL</b></a>
+  <a class="btn btn-ghost btn-sm" href="report.html">Cancel</a>
+</div></header>
+
+<div class="wrap"><div class="rep">
+<div id="form">
+  <div class="emergency">⚠️ If a crime is in progress or life is in danger, call <b id="ph"></b> or 10111 immediately.</div>
+  <div class="steps">
+    <div class="s active" data-s="1"></div><div class="s" data-s="2"></div><div class="s" data-s="3"></div><div class="s" data-s="4"></div><div class="s" data-s="5"></div>
+  </div>
+
+  <!-- honeypot -->
+  <input class="hp" type="text" id="company" name="company" tabindex="-1" autocomplete="off">
+
+  <!-- STEP 1 -->
+  <div class="step on" data-step="1">
+    <div class="step-label">Step 1 of 5</div>
+    <h2>What happened?</h2>
+    <div class="field"><label>Incident type *</label><select id="incident_type"></select></div>
+    <div class="field"><label>Describe what happened *</label>
+      <textarea id="description" placeholder="Briefly describe the incident — who, what, and anything you noticed."></textarea></div>
+    <div class="nav-btns"><button class="btn btn-primary" onclick="next(1)">Continue →</button></div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step" data-step="2">
+    <div class="step-label">Step 2 of 5</div>
+    <h2>Where did it happen?</h2>
+    <div class="field"><label>Location *</label><input id="location" placeholder="Address, site name, gate, or area"></div>
+    <div class="row">
+      <div class="field"><label>Date</label><input id="incident_date" type="date"></div>
+      <div class="field"><label>Time</label><input id="incident_time" type="time"></div>
+    </div>
+    <div class="nav-btns"><button class="btn btn-steel" onclick="go(1)">← Back</button><button class="btn btn-primary" onclick="next(2)">Continue →</button></div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step" data-step="3">
+    <div class="step-label">Step 3 of 5</div>
+    <h2>Your contact details</h2>
+    <p class="mute" style="margin-top:-6px;font-size:.9rem">So we can verify your report and keep you updated. Provide at least an email or phone.</p>
+    <div class="field"><label>Full name</label><input id="contact_name" placeholder="Your name"></div>
+    <div class="field"><label>Phone number</label><input id="contact_phone" type="tel" placeholder="e.g. 071 234 5678"></div>
+    <div class="field"><label>Email address</label><input id="contact_email" type="email" placeholder="you@example.com"></div>
+    <div class="nav-btns"><button class="btn btn-steel" onclick="go(2)">← Back</button><button class="btn btn-primary" onclick="next(3)">Continue →</button></div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step" data-step="4">
+    <div class="step-label">Step 4 of 5 · Optional</div>
+    <h2>Evidence &amp; urgency</h2>
+    <div class="field"><label>How urgent is this?</label>
+      <div class="urg-grid">
+        <label><input type="radio" name="urg" value="low"><span>Low</span></label>
+        <label><input type="radio" name="urg" value="medium" checked><span>Medium</span></label>
+        <label><input type="radio" name="urg" value="high"><span>High</span></label>
+        <label><input type="radio" name="urg" value="critical"><span>Critical</span></label>
+      </div>
+    </div>
+    <div class="field"><label>Photos or documents</label>
+      <div class="filepick" id="pick">📎 Tap to add photos or files<br><small>Up to 3 files, 5MB each</small></div>
+      <input type="file" id="files" multiple accept="image/*,.pdf,.doc,.docx" class="hide">
+      <div id="filelist"></div>
+    </div>
+    <div class="field"><label>Anything else? (optional)</label><textarea id="supporting_info" placeholder="People involved, vehicle descriptions, witnesses…"></textarea></div>
+    <div class="nav-btns"><button class="btn btn-steel" onclick="go(3)">← Back</button><button class="btn btn-primary" onclick="next(4)">Review →</button></div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step" data-step="5">
+    <div class="step-label">Step 5 of 5</div>
+    <h2>Review &amp; submit</h2>
+    <div id="review"></div>
+    <div class="field" style="margin-top:16px"><label>Quick check — what is <b id="cap-q" class="g"></b>?</label>
+      <input id="cap-a" inputmode="numeric" placeholder="Answer" autocomplete="off"></div>
+    <div class="err" id="err"></div>
+    <div class="nav-btns"><button class="btn btn-steel" onclick="go(4)">← Back</button>
+      <button class="btn btn-report" id="submitBtn" onclick="submitReport()">Submit report</button></div>
+    <p class="hint" style="margin-top:12px">By submitting you confirm this report is truthful. False reporting is a criminal offence.</p>
+  </div>
+</div>
+
+<!-- SUCCESS -->
+<div id="done" class="hide"><div class="success">
+  <div style="font-size:3rem">✅</div>
+  <h2>Incident received</h2>
+  <p class="mute">Your incident has been successfully submitted to Hornbill Tactical.</p>
+  <div class="refbox" id="doneRef"></div>
+  <p class="mute" style="font-size:.9rem">Save this reference number. You can use it to track your incident at any time.</p>
+  <div class="grid g2" style="margin:22px 0">
+    <a class="btn btn-primary" id="trackBtn">Track this incident</a>
+    <a class="btn btn-ghost" href="index.html">Done</a>
+  </div>
+  <div class="card gold" style="text-align:left">
+    <h3 style="margin:0 0 6px">Want easier access to your incident history?</h3>
+    <p class="mute" style="font-size:.92rem">Create a free client account to track this and future incidents from one dashboard — your report will appear there automatically.</p>
+    <a class="btn btn-steel btn-block" id="createAcc" style="margin-top:6px">Create account</a>
+  </div>
+</div></div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+document.getElementById("ph").textContent=HT_CONFIG.EMERGENCY;
+const sel=document.getElementById("incident_type");
+sel.innerHTML='<option value="">Select…</option>'+INCIDENT_TYPES.map(t=>`<option>${t}</option>`).join("");
+const siteCtx=qs("site"); if(siteCtx)document.getElementById("location").value=siteCtx;
+let step=1, picked=[];
+function go(n){step=n;document.querySelectorAll(".step").forEach(s=>s.classList.toggle("on",+s.dataset.step===n));
+  document.querySelectorAll(".steps .s").forEach(s=>{const d=+s.dataset.s;s.classList.toggle("active",d===n);s.classList.toggle("done",d<n);});
+  window.scrollTo({top:0,behavior:"smooth"});}
+function next(from){
+  if(from===1){if(!sel.value){toast("Please choose an incident type","err");return;}
+    if(document.getElementById("description").value.trim().length<5){toast("Please describe what happened","err");return;}}
+  if(from===2){if(!document.getElementById("location").value.trim()){toast("Please enter a location","err");return;}}
+  if(from===3){const e=document.getElementById("contact_email").value.trim(),p=document.getElementById("contact_phone").value.trim();
+    if(!e&&!p){toast("Please provide an email or phone number","err");return;}}
+  if(from===4){renderReview();genCap();}
+  go(from+1);
+}
+// file picker
+const fi=document.getElementById("files");
+document.getElementById("pick").onclick=()=>fi.click();
+fi.onchange=()=>{for(const f of fi.files){if(picked.length>=3){toast("Max 3 files","err");break;}
+  if(f.size>5*1024*1024){toast(f.name+" is over 5MB","err");continue;}picked.push(f);}renderFiles();fi.value="";};
+function renderFiles(){document.getElementById("filelist").innerHTML=picked.map((f,i)=>
+  `<div class="filerow"><span>📄 ${esc(f.name)} <small>(${(f.size/1024).toFixed(0)} KB)</small></span><button class="x" onclick="rmFile(${i})">×</button></div>`).join("");}
+function rmFile(i){picked.splice(i,1);renderFiles();}
+const val=id=>document.getElementById(id).value.trim();
+const urg=()=>document.querySelector('input[name=urg]:checked').value;
+function renderReview(){
+  const rows=[["Incident type",val("incident_type")],["Description",val("description")],
+    ["Location",val("location")],["Date / time",[fmtDate(val("incident_date")||null),val("incident_time")].filter(x=>x&&x!=="—").join(" · ")||"Not specified"],
+    ["Urgency",URGENCY[urg()].label],["Name",val("contact_name")||"—"],
+    ["Phone",val("contact_phone")||"—"],["Email",val("contact_email")||"—"],
+    ["Evidence",picked.length?picked.length+" file(s)":"None"]];
+  document.getElementById("review").innerHTML=rows.map(([k,v])=>`<div class="rev-item"><b>${k}</b>${esc(v)}</div>`).join("");
+}
+// captcha
+let capAns=0;
+function genCap(){const a=Math.floor(Math.random()*7)+2,b=Math.floor(Math.random()*7)+2;capAns=a+b;
+  document.getElementById("cap-q").textContent=`${a} + ${b}`;document.getElementById("cap-a").value="";}
+async function submitReport(){
+  const err=document.getElementById("err");err.textContent="";
+  if(parseInt(document.getElementById("cap-a").value,10)!==capAns){err.textContent="Please answer the quick check correctly.";genCap();return;}
+  const btn=document.getElementById("submitBtn");btn.disabled=true;btn.textContent="Submitting…";
+  let files=[];
+  try{for(const f of picked)files.push({name:f.name,type:f.type,b64:await fileToB64(f)});}catch(_){}
+  const payload={company:val("company"),incident_type:val("incident_type"),description:val("description"),
+    location:val("location"),incident_date:val("incident_date")||null,incident_time:val("incident_time")||null,
+    urgency:urg(),supporting_info:val("supporting_info"),contact_name:val("contact_name"),
+    contact_phone:val("contact_phone"),contact_email:val("contact_email"),files};
+  const res=await callFn("quick-report",payload);
+  if(!res||!res.ok){err.textContent=res?.error||"Could not submit. Please try again or call "+HT_CONFIG.EMERGENCY;btn.disabled=false;btn.textContent="Submit report";return;}
+  document.getElementById("form").classList.add("hide");
+  const done=document.getElementById("done");done.classList.remove("hide");
+  document.getElementById("doneRef").textContent=res.reference;
+  document.getElementById("trackBtn").href="track.html?token="+encodeURIComponent(res.tracking_token);
+  document.getElementById("createAcc").href="client/signup.html?ref="+encodeURIComponent(res.reference)+"&email="+encodeURIComponent(val("contact_email"));
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+</script>
+<script src="fx.js"></script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reset password — Hornbill Tactical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>.auth{max-width:420px;margin:0 auto;padding:60px 0}.auth .brand{justify-content:center;margin-bottom:8px;font-size:1.2rem}</style>
+</head>
+<body>
+<div class="spotlight"></div>
+<div class="wrap"><div class="auth">
+  <a class="brand" href="index.html"><img src="assets/Hornbill_Mark_gold.png" alt="" style="height:34px"> HORNBILL <b class="g">TACTICAL</b></a>
+  <div class="card gold" style="margin-top:18px" id="card">
+    <div id="loading"><div class="spin"></div><p class="center mute">Verifying your reset link…</p></div>
+
+    <div id="form" class="hide">
+      <h2 style="margin-bottom:4px">Set a new password</h2>
+      <p class="mute" style="font-size:.9rem;margin-top:0">Choose a strong password of at least 8 characters.</p>
+      <div class="field"><label>New password</label><input id="pw" type="password" autocomplete="new-password" placeholder="••••••••"></div>
+      <div class="field"><label>Confirm password</label><input id="pw2" type="password" autocomplete="new-password" placeholder="••••••••"></div>
+      <div class="err" id="err"></div>
+      <button class="btn btn-primary btn-block" id="btn" onclick="save()">Update password</button>
+    </div>
+
+    <div id="invalid" class="hide">
+      <h2>Link expired or invalid</h2>
+      <p class="mute">Please request a new password reset from the login page.</p>
+      <a class="btn btn-ghost btn-block" href="client/login.html">Back to login</a>
+    </div>
+
+    <div id="done" class="hide center">
+      <div style="font-size:2.4rem">✅</div>
+      <h2>Password updated</h2>
+      <p class="mute">You can now log in with your new password.</p>
+      <a class="btn btn-primary btn-block" id="doneLink" href="client/login.html">Continue to login</a>
+    </div>
+  </div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+let recovered=false;
+sb.auth.onAuthStateChange((event,session)=>{ if(event==="PASSWORD_RECOVERY"||(session&&!recovered)) showForm(); });
+function showForm(){recovered=true;document.getElementById("loading").classList.add("hide");document.getElementById("form").classList.remove("hide");}
+(async()=>{
+  await new Promise(r=>setTimeout(r,900));
+  const { data:{ session } }=await sb.auth.getSession();
+  if(session) showForm();
+  else if(!recovered){document.getElementById("loading").classList.add("hide");document.getElementById("invalid").classList.remove("hide");}
+})();
+async function save(){
+  const err=document.getElementById("err");err.textContent="";
+  const pw=document.getElementById("pw").value,pw2=document.getElementById("pw2").value;
+  if(pw.length<8){err.textContent="Password must be at least 8 characters.";return;}
+  if(pw!==pw2){err.textContent="Passwords do not match.";return;}
+  const btn=document.getElementById("btn");btn.disabled=true;btn.textContent="Updating…";
+  const { error }=await sb.auth.updateUser({password:pw});
+  if(error){err.textContent=error.message;btn.disabled=false;btn.textContent="Update password";return;}
+  // route to the right login based on account type
+  const me=await whoami();
+  document.getElementById("doneLink").href = me?.kind==="staff" ? "staff/login.html" : "client/login.html";
+  document.getElementById("form").classList.add("hide");
+  document.getElementById("done").classList.remove("hide");
+  await sb.auth.signOut();
+}
+</script>
+<script src="fx.js"></script>
+</body>
+</html>

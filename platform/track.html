@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Track My Incident — Hornbill Tactical</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>.track{max-width:640px;margin:0 auto;padding:34px 0 60px}
+.statushead{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.big-status{font-family:var(--font-d);font-size:1.5rem;font-weight:700}</style>
+</head>
+<body>
+<header class="nav"><div class="wrap">
+  <a class="brand" href="index.html"><img src="assets/Hornbill_Mark_gold.png" alt=""> HORNBILL <b>TACTICAL</b></a>
+  <a class="btn btn-report btn-sm" href="report.html">🚨 Report</a>
+</div></header>
+
+<div class="wrap"><div class="track">
+  <h1>Track my <span class="g">incident</span></h1>
+  <p class="mute">Enter your reference number and the email or phone you used to report.</p>
+
+  <div class="card" id="lookup">
+    <div class="field"><label>Incident reference number</label><input id="reference" placeholder="INC-2026-00142" style="text-transform:uppercase"></div>
+    <div class="field"><label>Email or phone used to report</label><input id="contact" placeholder="you@example.com or 071 234 5678"></div>
+    <div class="err" id="err"></div>
+    <button class="btn btn-primary btn-block" id="btn" onclick="lookup()">Track incident</button>
+  </div>
+
+  <div id="loading" class="hide"><div class="spin"></div></div>
+  <div id="result" class="hide"></div>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+const token=qs("token");
+async function lookup(byToken){
+  const err=document.getElementById("err");err.textContent="";
+  let payload;
+  if(byToken){payload={token:byToken};}
+  else{const ref=document.getElementById("reference").value.trim();const contact=document.getElementById("contact").value.trim();
+    if(!ref||!contact){err.textContent="Please enter both your reference number and contact.";return;}
+    payload={reference:ref,contact};}
+  document.getElementById("lookup").classList.toggle("hide",!!byToken);
+  document.getElementById("loading").classList.remove("hide");
+  const res=await callFn("track-incident",payload);
+  document.getElementById("loading").classList.add("hide");
+  if(!res||!res.ok){document.getElementById("lookup").classList.remove("hide");err.textContent=res?.error||"Could not find that incident.";return;}
+  render(res);
+}
+function render(res){
+  const i=res.incident, m=STATUS[i.status]||STATUS.submitted;
+  const latest=res.updates&&res.updates[0];
+  document.getElementById("result").classList.remove("hide");
+  document.getElementById("result").innerHTML=`
+    <div class="card gold" style="margin-bottom:16px">
+      <div class="between"><span class="ref" style="font-family:var(--font-d);color:var(--gold);font-size:1.1rem">${esc(i.reference)}</span>${sourceBadge('guest')}</div>
+      <div class="statushead" style="margin-top:14px">
+        <span style="font-size:1.6rem">${m.emoji}</span>
+        <span class="big-status" style="color:${m.color}">${m.label}</span>
+      </div>
+      <div class="grid g2" style="margin-top:16px">
+        <div><b class="mute" style="font-size:.78rem">TYPE</b><div>${esc(i.incident_type)}</div></div>
+        <div><b class="mute" style="font-size:.78rem">LOCATION</b><div>${esc(i.location||"—")}</div></div>
+        <div><b class="mute" style="font-size:.78rem">SUBMITTED</b><div>${fmtDate(i.created_at)}</div></div>
+        <div><b class="mute" style="font-size:.78rem">LAST UPDATE</b><div>${fmtDateTime(i.updated_at)}</div></div>
+      </div>
+    </div>
+    ${latest?`<div class="card" style="margin-bottom:16px"><b class="mute" style="font-size:.78rem">LATEST UPDATE FROM HORNBILL</b>
+      <p style="margin:8px 0 4px">"${esc(latest.body)}"</p><small>${esc(latest.author_label||"Hornbill Tactical")} · ${fmtDateTime(latest.created_at)}</small></div>`:""}
+    <div class="card">
+      <h3>Progress</h3>
+      <div class="timeline">${buildTimeline(res.timeline)}</div>
+    </div>
+    <p class="center" style="margin-top:18px"><a class="btn btn-ghost btn-sm" href="track.html">Track another</a></p>`;
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+document.getElementById("reference").addEventListener("keydown",e=>{if(e.key==="Enter")lookup();});
+document.getElementById("contact").addEventListener("keydown",e=>{if(e.key==="Enter")lookup();});
+if(token) lookup(token);
+</script>
+<script src="fx.js"></script>
+</body>
+</html>

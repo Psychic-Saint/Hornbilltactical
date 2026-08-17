@@ -34,6 +34,13 @@
   </aside>
   <main class="main" id="main"><div class="spin"></div></main>
 </div>
+<nav class="bottom-nav">
+  <button class="bn-item" data-bn="dashboard" onclick="nav('dashboard')"><span class="bi">▚</span>Dashboard</button>
+  <button class="bn-item" data-bn="incidents" onclick="nav('incidents')"><span class="bi">📋</span>Incidents</button>
+  <button class="bn-item" data-bn="invoices" onclick="nav('invoices')"><span class="bi">🧾</span>Invoices</button>
+  <button class="bn-item" data-bn="clients" onclick="nav('clients')"><span class="bi">🏢</span>Clients</button>
+  <button class="bn-item" onclick="document.querySelector('.side').classList.add('open');document.querySelector('.backdrop').classList.add('show')"><span class="bi">☰</span>More</button>
+</nav>
 <div class="overlay right" id="drawer" onclick="if(event.target===this)close_()"></div>
 <div class="overlay" id="modal" onclick="if(event.target===this)closeModal()"></div>
 
@@ -49,7 +56,8 @@
 let ME,STAFF=[],CLIENTS=[];
 const clientObj=id=>CLIENTS.find(c=>c.id===id);
 const main=document.getElementById("main");
-function setActive(v){document.querySelectorAll(".side .item").forEach(a=>a.classList.toggle("active",a.dataset.v===v));}
+function setActive(v){document.querySelectorAll(".side .item").forEach(a=>a.classList.toggle("active",a.dataset.v===v));
+  document.querySelectorAll(".bn-item").forEach(a=>a.classList.toggle("active",a.dataset.bn===v));}
 function closeMobile(){document.querySelector('.side').classList.remove('open');document.querySelector('.backdrop').classList.remove('show');}
 function nav(v){setActive(v);closeMobile();views[v]();}
 function close_(){document.getElementById("drawer").classList.remove("show");}

@@ -51,8 +51,8 @@
   if(spot && !reduce){document.addEventListener("pointermove",e=>{
     spot.style.setProperty("--mx",e.clientX+"px");spot.style.setProperty("--my",e.clientY+"px");});}
 
-  /* Warm & Easy Blueprints signature — on every page */
-  if(!document.querySelector(".web-credit")){
+  /* Warm & Easy Blueprints signature — operations console only (main site has its own footer credit) */
+  if(location.pathname.indexOf("/staff/console.html")!==-1 && !document.querySelector(".web-credit")){
     var side=document.querySelector(".side");
     var f=document.createElement("footer");f.className="web-credit";
     f.innerHTML='<a href="https://weblueprints.co.za/" target="_blank" rel="noopener" title="Warm & Easy Blueprints">'

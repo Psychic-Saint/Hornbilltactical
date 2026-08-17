@@ -304,7 +304,7 @@ body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opa
   text-decoration:none;padding:8px 15px;border:1px solid var(--line2);border-radius:999px;transition:.3s var(--ease)}
 .web-credit a:hover{border-color:var(--gold);color:var(--ink);transform:translateY(-1px)}
 .web-mono{font-family:var(--font-d);font-weight:700;font-size:.72rem;letter-spacing:.14em;color:#1a1205;
-  background:linear-gradient(135deg,#f7c65a,var(--gold));padding:3px 7px;border-radius:6px;transition:box-shadow .35s}
+  background:linear-gradient(135deg,#f7c65a,var(--gold));padding:3px 7px;border-radius:6px;box-shadow:0 0 8px -2px var(--amber-glow);transition:box-shadow .35s}
 .web-credit a:hover .web-mono{box-shadow:0 0 18px -1px var(--amber-glow)}
 .web-text b{font-weight:600;color:var(--gold);
   background:linear-gradient(90deg,var(--gold),#fff2d6 45%,var(--gold));background-size:220% auto;

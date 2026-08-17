@@ -50,4 +50,14 @@
   const spot=document.querySelector(".spotlight");
   if(spot && !reduce){document.addEventListener("pointermove",e=>{
     spot.style.setProperty("--mx",e.clientX+"px");spot.style.setProperty("--my",e.clientY+"px");});}
+
+  /* Warm & Easy Blueprints signature — on every page */
+  if(!document.querySelector(".web-credit")){
+    var side=document.querySelector(".side");
+    var f=document.createElement("footer");f.className="web-credit";
+    f.innerHTML='<a href="https://weblueprints.co.za/" target="_blank" rel="noopener" title="Warm & Easy Blueprints">'
+      +'<span class="web-mono">WEB</span>'
+      +'<span class="web-text">Designed &amp; Developed by <b>Warm &amp; Easy Blueprints</b></span></a>';
+    (side||document.body).appendChild(f);
+  }
 })();

@@ -297,3 +297,22 @@ body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opa
 .chart-card{position:relative}
 .chart-card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.4;
   background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.02) 3px 4px)}
+
+/* ============ WARM & EASY BLUEPRINTS SIGNATURE ============ */
+.web-credit{text-align:center;padding:28px 16px 34px;font-family:var(--font-b)}
+.web-credit a{display:inline-flex;align-items:center;gap:9px;color:var(--mute);font-size:.82rem;letter-spacing:.02em;
+  text-decoration:none;padding:8px 15px;border:1px solid var(--line2);border-radius:999px;transition:.3s var(--ease)}
+.web-credit a:hover{border-color:var(--gold);color:var(--ink);transform:translateY(-1px)}
+.web-mono{font-family:var(--font-d);font-weight:700;font-size:.72rem;letter-spacing:.14em;color:#1a1205;
+  background:linear-gradient(135deg,#f7c65a,var(--gold));padding:3px 7px;border-radius:6px;transition:box-shadow .35s}
+.web-credit a:hover .web-mono{box-shadow:0 0 18px -1px var(--amber-glow)}
+.web-text b{font-weight:600;color:var(--gold);
+  background:linear-gradient(90deg,var(--gold),#fff2d6 45%,var(--gold));background-size:220% auto;
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.web-credit a:hover .web-text b{animation:webshine 1.3s linear infinite}
+@keyframes webshine{to{background-position:220% center}}
+/* sidebar variant (staff console + client portal) */
+.side .web-credit{padding:12px 8px 6px;margin-top:6px;border-top:1px solid var(--line2)}
+.side .web-credit a{font-size:.72rem;padding:8px 10px;gap:7px;flex-wrap:wrap;justify-content:center;text-align:center;border-color:transparent}
+.side .web-credit a:hover{border-color:var(--line2);transform:none}
+@media(prefers-reduced-motion:reduce){.web-credit a:hover .web-text b{animation:none}}

@@ -50,6 +50,7 @@ function close_(){document.getElementById("drawer").classList.remove("show");}
 
 (async()=>{
   ME=await requireRole("client","login.html");if(!ME)return;
+  applyOrgSettings();
   CLIENT=ME.client;
   nav("dashboard");
 })();

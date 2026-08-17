@@ -88,6 +88,25 @@ async function requireRole(kind,loginUrl){
 }
 async function logout(to){ await sb.auth.signOut(); location.href=to; }
 
+/* ---- Load org branding/company overrides from DB (falls back to config.js silently) ---- */
+async function applyOrgSettings(){
+  try{
+    const { data:s } = await sb.from("org_settings").select("*").eq("id",true).maybeSingle();
+    if(!s) return;
+    Object.assign(HT_CONFIG.COMPANY,{
+      name: s.company_name || HT_CONFIG.COMPANY.name,
+      tagline: s.tagline || HT_CONFIG.COMPANY.tagline,
+      address: s.address || HT_CONFIG.COMPANY.address,
+      email: s.email || HT_CONFIG.COMPANY.email,
+      phone: s.phone || HT_CONFIG.COMPANY.phone,
+      reg: s.reg_number || HT_CONFIG.COMPANY.reg,
+      vat: s.vat_number || HT_CONFIG.COMPANY.vat,
+      vatRate: (s.vat_rate ?? HT_CONFIG.COMPANY.vatRate),
+      bank: s.bank_details || HT_CONFIG.COMPANY.bank,
+    });
+  }catch(_){ /* org_settings not reachable (e.g. guest context) — keep config.js defaults */ }
+}
+
 /* ---- Client-friendly timeline builder ---- */
 function buildTimeline(history){
   // history: [{status,note,created_at}] ordered asc

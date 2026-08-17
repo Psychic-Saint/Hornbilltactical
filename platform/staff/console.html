@@ -26,6 +26,7 @@
     <a class="item" data-v="tasks" onclick="nav('tasks')"><span class="ic">✔</span> Tasks</a>
     <a class="item" data-v="users" onclick="nav('users')"><span class="ic">👥</span> Users</a>
     <a class="item" data-v="audit" onclick="nav('audit')"><span class="ic">🗂️</span> Audit trail</a>
+    <a class="item" data-v="settings" onclick="nav('settings')"><span class="ic">⚙️</span> Settings</a>
     <div class="spacer"></div>
     <div class="pill" id="whoPill" style="margin:0 8px 8px"></div>
     <a class="item" href="../../index.html"><span class="ic">↩</span> Hornbill website</a>
@@ -57,6 +58,7 @@ function closeModal(){document.getElementById("modal").classList.remove("show");
 
 (async()=>{
   ME=await requireRole("staff","login.html");if(!ME)return;
+  applyOrgSettings();
   document.getElementById("whoPill").textContent=ME.profile.full_name+" · "+ME.profile.role;
   const [{data:st},{data:cl}]=await Promise.all([
     sb.from("profiles").select("id,full_name,role,is_active").order("full_name"),
@@ -478,6 +480,232 @@ views.audit=async()=>{
       <td><small class="mute">${esc(l.meta?JSON.stringify(l.meta):"")}</small></td></tr>`).join("")
       ||'<tr><td colspan="5"><div class="empty">No audit entries.</div></td></tr>'}</tbody></table></div>`;
 };
+
+/* ============ SETTINGS ============ */
+let settingsTab="analytics";
+const settingsViews={};
+views.settings=async()=>{
+  const tabs=[["analytics","📊 Analytics"],["storage","🗄️ Storage"],["billing","💳 Billing & cash flow"],
+    ["company","🏷️ Company & branding"],["notify","🔔 Notifications"],["integrations","🔌 Integrations"],["backup","💾 Backup & export"]];
+  main.innerHTML=`<div class="page-head"><h2>Settings</h2></div>
+    <div class="wrap-gap" style="margin-bottom:16px">${tabs.map(([k,l])=>`<span class="chip-filter ${settingsTab===k?"on":""}" onclick="settingsTab='${k}';nav('settings')">${l}</span>`).join("")}</div>
+    <div id="settingsBody"><div class="spin"></div></div>`;
+  settingsViews[settingsTab]();
+};
+
+/* ---- Analytics ---- */
+settingsViews.analytics=async()=>{
+  const el=document.getElementById("settingsBody");
+  const [{data:inc},{data:invs}]=await Promise.all([
+    sb.from("incidents").select("incident_type,urgency,status,source,created_at"),
+    sb.from("invoices").select("amount,status,issued_date"),
+  ]);
+  const months=[...Array(6)].map((_,i)=>{const d=new Date();d.setMonth(d.getMonth()-(5-i));return {key:d.toISOString().slice(0,7),label:d.toLocaleDateString("en-ZA",{month:"short"})};});
+  const incByMonth=months.map(m=>(inc||[]).filter(i=>(i.created_at||"").slice(0,7)===m.key).length);
+  const typeCounts={};(inc||[]).forEach(i=>{typeCounts[i.incident_type]=(typeCounts[i.incident_type]||0)+1;});
+  const topTypes=Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  el.innerHTML=`
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="stat"><div class="n">${(inc||[]).length}</div><div class="l">Total incidents (all time)</div></div>
+      <div class="stat"><div class="n">${CLIENTS.length}</div><div class="l">Active clients</div></div>
+      <div class="stat"><div class="n">${STAFF.length}</div><div class="l">Staff operators</div></div>
+      <div class="stat"><div class="n" style="color:${(inc||[]).filter(i=>i.urgency==="critical").length?"var(--crit)":"var(--ink)"}">${(inc||[]).filter(i=>i.urgency==="critical").length}</div><div class="l">Critical incidents (all time)</div></div>
+    </div>
+    <div class="grid g2" style="margin-bottom:18px">
+      <div class="card chart-card"><h3>Incident volume — last 6 months</h3><div style="height:220px"><canvas id="anMonth"></canvas></div></div>
+      <div class="card chart-card"><h3>Incidents by urgency</h3><div style="height:220px"><canvas id="anUrg"></canvas></div></div>
+    </div>
+    <div class="card">
+      <h3>Top incident types</h3>
+      ${topTypes.map(([t,c])=>`<div class="kv"><b>${esc(t)}</b><span>${c}</span></div>`).join("")||'<div class="empty">No data yet.</div>'}
+    </div>`;
+  const barCtx=document.getElementById("anMonth");
+  if(barCtx&&window.Chart){new Chart(barCtx,{type:"bar",data:{labels:months.map(m=>m.label),datasets:[{data:incByMonth,backgroundColor:"#F5A623",borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{color:"#8b929c"}},x:{ticks:{color:"#8b929c"}}}}});}
+  const u=s=>(inc||[]).filter(i=>i.urgency===s).length;
+  donut("anUrg",["Low","Medium","High","Critical"],[u("low"),u("medium"),u("high"),u("critical")],["#4ade80","#F5A623","#ff8a3d","#ff4d4d"]);
+};
+
+/* ---- Storage ---- */
+settingsViews.storage=async()=>{
+  const el=document.getElementById("settingsBody");
+  el.innerHTML=`<div class="card"><h3>Evidence storage (Supabase)</h3>
+    <p class="mute" style="font-size:.88rem">Scans the evidence bucket to estimate usage. Large archives may take a moment.</p>
+    <button class="btn btn-steel btn-sm" onclick="calcStorage()">Calculate usage</button>
+    <div id="storageResult" style="margin-top:16px"></div></div>
+    <div class="card" style="margin-top:16px"><h3>Google Drive</h3>
+      <p class="mute" style="font-size:.9rem">${HT_CONFIG.DRIVE_ENABLED?"Connected — evidence also syncs to your Drive folder.":"Not connected yet. Once set up, attachments mirror to your Drive folder and usage counts against your Google storage quota, not Supabase's."}</p></div>`;
+};
+async function calcStorage(){
+  const box=document.getElementById("storageResult");box.innerHTML='<div class="spin"></div>';
+  let total=0,fileCount=0;const byClient={};
+  try{
+    const {data:roots}=await sb.storage.from("evidence").list("",{limit:1000});
+    for(const r of (roots||[])){
+      if(!r.id&&!r.metadata){ // folder
+        const {data:incFolders}=await sb.storage.from("evidence").list(r.name,{limit:1000});
+        for(const f of (incFolders||[])){
+          if(!f.id&&!f.metadata){
+            const {data:files}=await sb.storage.from("evidence").list(r.name+"/"+f.name,{limit:1000});
+            (files||[]).forEach(fl=>{const sz=fl.metadata?.size||0;total+=sz;fileCount++;byClient[r.name]=(byClient[r.name]||0)+sz;});
+          }
+        }
+      }
+    }
+    const fmt=b=>b<1024?b+" B":b<1048576?(b/1024).toFixed(1)+" KB":(b/1048576).toFixed(1)+" MB";
+    const rows=Object.entries(byClient).sort((a,b)=>b[1]-a[1]).slice(0,8)
+      .map(([cid,sz])=>`<div class="kv"><b>${esc(clientName(cid)!=="—"?clientName(cid):"Guest / "+cid.slice(0,8))}</b><span>${fmt(sz)}</span></div>`).join("");
+    box.innerHTML=`<div class="grid g3" style="margin-bottom:14px">
+      <div class="stat"><div class="n" style="color:var(--gold)">${fmt(total)}</div><div class="l">Total used</div></div>
+      <div class="stat"><div class="n">${fileCount}</div><div class="l">Files</div></div>
+      <div class="stat"><div class="n">1 GB</div><div class="l">Free tier limit</div></div></div>
+      <h3 style="font-size:.95rem">By client</h3>${rows||'<div class="empty">No files yet.</div>'}`;
+  }catch(e){box.innerHTML=`<p class="mute">Could not calculate: ${esc(e.message||String(e))}</p>`;}
+}
+
+/* ---- Billing & cash flow ---- */
+settingsViews.billing=async()=>{
+  const el=document.getElementById("settingsBody");
+  const {data:invs}=await sb.from("invoices").select("amount,status,issued_date,client_id");
+  const months=[...Array(6)].map((_,i)=>{const d=new Date();d.setMonth(d.getMonth()-(5-i));return {key:d.toISOString().slice(0,7),label:d.toLocaleDateString("en-ZA",{month:"short"})};});
+  const revByMonth=months.map(m=>(invs||[]).filter(i=>(i.issued_date||"").slice(0,7)===m.key).reduce((a,b)=>a+ +b.amount,0));
+  const sum=s=>(invs||[]).filter(i=>i.status===s).reduce((a,b)=>a+ +b.amount,0);
+  const byClient={};(invs||[]).forEach(i=>{byClient[i.client_id]=(byClient[i.client_id]||0)+ +i.amount;});
+  const topClients=Object.entries(byClient).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  el.innerHTML=`
+    <div class="grid g3" style="margin-bottom:18px">
+      <div class="stat accent"><div class="n">${money(sum("outstanding"))}</div><div class="l">Outstanding</div></div>
+      <div class="stat"><div class="n" style="color:var(--crit)">${money(sum("overdue"))}</div><div class="l">Overdue</div></div>
+      <div class="stat"><div class="n" style="color:var(--ok)">${money(sum("paid"))}</div><div class="l">Collected (all time)</div></div>
+    </div>
+    <div class="card chart-card" style="margin-bottom:18px"><h3>Revenue — last 6 months</h3><div style="height:220px"><canvas id="billMonth"></canvas></div></div>
+    <div class="card" style="margin-bottom:18px"><h3>Top clients by billing</h3>
+      ${topClients.map(([cid,amt])=>`<div class="kv"><b>${esc(clientName(cid))}</b><span>${money(amt)}</span></div>`).join("")||'<div class="empty">No invoices yet.</div>'}</div>
+    <div class="card">
+      <h3>Online payments</h3>
+      <p class="mute" style="font-size:.9rem">Not connected yet. Clients currently pay via EFT using the banking details on each invoice. To let clients pay online (card / instant EFT), Hornbill needs to pick a South African payment gateway — PayFast, Yoco or Paystack are the common options — and provide a merchant account + API key. Say the word and it gets wired into invoice PDFs and the client portal as a "Pay now" button.</p>
+    </div>`;
+  const barCtx=document.getElementById("billMonth");
+  if(barCtx&&window.Chart){new Chart(barCtx,{type:"bar",data:{labels:months.map(m=>m.label),datasets:[{data:revByMonth,backgroundColor:"#F5A623",borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{color:"#8b929c",callback:v=>"R"+v}},x:{ticks:{color:"#8b929c"}}}}});}
+};
+
+/* ---- Company & branding ---- */
+settingsViews.company=async()=>{
+  const el=document.getElementById("settingsBody");
+  const {data:s,error}=await sb.from("org_settings").select("*").eq("id",true).maybeSingle();
+  if(error||!s){el.innerHTML=`<p class="mute">Could not load company settings.</p>`;return;}
+  el.innerHTML=`<div class="card gold" style="max-width:640px">
+    <h3 style="margin-top:0">Company details</h3>
+    <p class="mute" style="font-size:.85rem;margin-top:-6px">Used on invoice PDFs and branded emails. Changes apply immediately, site-wide.</p>
+    <div class="field"><label>Company name</label><input id="cs_name" value="${esc(s.company_name||"")}"></div>
+    <div class="field"><label>Tagline</label><input id="cs_tagline" value="${esc(s.tagline||"")}"></div>
+    <div class="field"><label>Address</label><input id="cs_addr" value="${esc(s.address||"")}"></div>
+    <div class="row"><div class="field"><label>Email</label><input id="cs_email" value="${esc(s.email||"")}"></div>
+      <div class="field"><label>Phone</label><input id="cs_phone" value="${esc(s.phone||"")}"></div></div>
+    <div class="row"><div class="field"><label>Registration no.</label><input id="cs_reg" value="${esc(s.reg_number||"")}"></div>
+      <div class="field"><label>VAT no.</label><input id="cs_vat" value="${esc(s.vat_number||"")}"></div></div>
+    <div class="field"><label>VAT rate <small>(e.g. 0.15 for 15%)</small></label><input id="cs_vatrate" type="number" step="0.01" value="${s.vat_rate??0.15}"></div>
+    <div class="field"><label>Banking details</label><textarea id="cs_bank">${esc(s.bank_details||"")}</textarea></div>
+    <div class="err" id="cs_err"></div>
+    <button class="btn btn-primary" onclick="saveCompanySettings()">Save changes</button>
+  </div>`;
+};
+async function saveCompanySettings(){
+  const g=id=>document.getElementById(id).value.trim();
+  const payload={company_name:g("cs_name"),tagline:g("cs_tagline"),address:g("cs_addr"),email:g("cs_email"),phone:g("cs_phone"),
+    reg_number:g("cs_reg"),vat_number:g("cs_vat"),vat_rate:parseFloat(g("cs_vatrate"))||0.15,bank_details:g("cs_bank"),
+    updated_at:new Date().toISOString(),updated_by:ME.user.id};
+  const {error}=await sb.from("org_settings").update(payload).eq("id",true);
+  if(error){document.getElementById("cs_err").textContent=error.message;return;}
+  await sb.from("audit_log").insert({actor:ME.user.id,actor_label:ME.profile.full_name,action:"settings.company_updated",entity:"org_settings"});
+  applyOrgSettings();
+  toast("Company settings saved","ok");
+}
+
+/* ---- Notifications ---- */
+settingsViews.notify=async()=>{
+  const el=document.getElementById("settingsBody");
+  const {data:s}=await sb.from("org_settings").select("*").eq("id",true).maybeSingle();
+  el.innerHTML=`<div class="card" style="max-width:560px">
+    <h3 style="margin-top:0">Automatic email notifications</h3>
+    <p class="mute" style="font-size:.88rem;margin-top:-6px">Applies once the email provider (Resend) is connected. These control which automatic emails go out.</p>
+    <label class="check" style="display:flex;gap:10px;margin-bottom:14px"><input type="checkbox" id="nt_new" ${s?.notify_new_incident?"checked":""}> New incident submitted (guest or client) → alert control room</label>
+    <label class="check" style="display:flex;gap:10px;margin-bottom:14px"><input type="checkbox" id="nt_status" ${s?.notify_status_change?"checked":""}> Incident status changes → notify the client</label>
+    <label class="check" style="display:flex;gap:10px;margin-bottom:18px"><input type="checkbox" id="nt_inv" ${s?.notify_invoice_sent?"checked":""}> Invoice sent → confirmation copy to control room</label>
+    <button class="btn btn-primary" onclick="saveNotifyPrefs()">Save preferences</button>
+  </div>`;
+};
+async function saveNotifyPrefs(){
+  const payload={notify_new_incident:document.getElementById("nt_new").checked,notify_status_change:document.getElementById("nt_status").checked,
+    notify_invoice_sent:document.getElementById("nt_inv").checked,updated_at:new Date().toISOString(),updated_by:ME.user.id};
+  const {error}=await sb.from("org_settings").update(payload).eq("id",true);
+  if(error){toast(error.message,"err");return;}
+  toast("Notification preferences saved","ok");
+}
+
+/* ---- Integrations ---- */
+settingsViews.integrations=async()=>{
+  const el=document.getElementById("settingsBody");el.innerHTML='<div class="spin"></div>';
+  const res=await callFn("system-status",{});
+  const row=(label,ok,hint)=>`<div class="kv"><b>${label}</b><span>${ok?'<span class="ok">● Connected</span>':`<span class="mute">○ Not connected</span>`}</span></div>${!ok&&hint?`<p class="hint" style="margin:-4px 0 12px">${hint}</p>`:""}`;
+  if(!res||!res.ok){el.innerHTML=`<div class="card"><p class="mute">Could not load integration status.</p></div>`;return;}
+  el.innerHTML=`<div class="card">
+    <h3 style="margin-top:0">Connected services</h3>
+    ${row("Email (Resend)",res.email.configured,"Add RESEND_API_KEY, RESEND_FROM and NOTIFY_EMAIL as Supabase secrets to switch on incident + invoice emails.")}
+    ${row("Google Drive",res.drive.configured,"Add GOOGLE_SA_EMAIL, GOOGLE_SA_PRIVATE_KEY and DRIVE_FOLDER_ID as Supabase secrets to mirror evidence + backups to Drive.")}
+    ${row("SharePoint",res.sharepoint.configured,"Not built yet — needs a Microsoft Graph app registration (client ID/secret + tenant) from your Microsoft 365 admin.")}
+    ${row("Online payments",res.payments.configured,"Not built yet — pick a gateway (PayFast / Yoco / Paystack) and share the merchant API key.")}
+    ${row("AI insights",res.ai_insights.configured,"Not built yet — needs an AI provider API key to generate plain-English weekly summaries of incidents/billing.")}
+  </div>`;
+};
+
+/* ---- Backup & export ---- */
+settingsViews.backup=async()=>{
+  const el=document.getElementById("settingsBody");
+  const {data:log}=await sb.from("backup_log").select("*").order("created_at",{ascending:false}).limit(10);
+  el.innerHTML=`<div class="card" style="margin-bottom:16px">
+    <h3 style="margin-top:0">Full data backup</h3>
+    <p class="mute" style="font-size:.88rem">One Excel workbook with every core table — clients, incidents, invoices, tasks — as separate sheets.</p>
+    <div class="wrap-gap">
+      <button class="btn btn-primary btn-sm" onclick="runFullBackup()">⬇ Download full backup (.xlsx)</button>
+      <button class="btn btn-steel btn-sm" ${HT_CONFIG.DRIVE_ENABLED?"":"disabled"} onclick="runFullBackup(true)">☁ Back up to Google Drive</button>
+    </div>
+    ${HT_CONFIG.DRIVE_ENABLED?"":'<p class="hint">Google Drive backup will activate once Drive is connected (see Integrations tab).</p>'}
+    <p class="hint">SharePoint backup isn't built yet — needs a Microsoft Graph app registration.</p>
+  </div>
+  <div class="card"><h3>Recent backups</h3>
+    <div class="tablewrap"><table class="table"><thead><tr><th>When</th><th>Kind</th><th>File</th><th>Status</th></tr></thead>
+    <tbody>${(log||[]).map(l=>`<tr><td><small>${fmtDateTime(l.created_at)}</small></td><td>${esc(l.kind)}</td><td>${esc(l.file_name||"—")}</td><td>${esc(l.status)}</td></tr>`).join("")
+      ||'<tr><td colspan="4"><div class="empty">No backups yet.</div></td></tr>'}</tbody></table></div></div>`;
+};
+async function runFullBackup(toDrive){
+  toast("Building backup…","");
+  const [{data:cl},{data:inc},{data:invs},{data:tasks}]=await Promise.all([
+    sb.from("clients").select("*"),sb.from("incidents").select("*"),sb.from("invoices").select("*"),sb.from("tasks").select("*"),
+  ]);
+  const wb=new ExcelJS.Workbook();wb.creator="Hornbill Tactical";wb.created=new Date();
+  const addSheet=(name,rows)=>{if(!rows||!rows.length){wb.addWorksheet(name);return;}
+    const ws=wb.addWorksheet(name);const headers=Object.keys(rows[0]);
+    ws.addRow(headers).eachCell(c=>{c.font={bold:true,color:{argb:"FF1A1205"}};c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF5A623"}};});
+    rows.forEach(r=>ws.addRow(headers.map(h=>{const v=r[h];return v instanceof Object&&!(v instanceof Date)?JSON.stringify(v):v;})));
+    ws.columns.forEach(c=>c.width=18);};
+  addSheet("Clients",cl);addSheet("Incidents",inc);addSheet("Invoices",invs);addSheet("Tasks",tasks);
+  const buf=await wb.xlsx.writeBuffer();
+  const fname=`hornbill-full-backup-${new Date().toISOString().slice(0,10)}.xlsx`;
+  if(toDrive&&HT_CONFIG.DRIVE_ENABLED){
+    const b64=btoa(String.fromCharCode(...new Uint8Array(buf)));
+    await callFn("drive-upload",{name:fname,mime:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",b64,backup:true});
+    await sb.from("backup_log").insert({kind:"drive",status:"completed",file_name:fname,size_bytes:buf.byteLength,triggered_by:ME.user.id});
+    toast("Backup sent to Google Drive","ok");
+  }else{
+    const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    await sb.from("backup_log").insert({kind:"manual",status:"completed",file_name:fname,size_bytes:buf.byteLength,triggered_by:ME.user.id});
+    toast("Backup downloaded","ok");
+  }
+  if(settingsTab==="backup")settingsViews.backup();
+}
 
 /* ============ EXCEL IMPORT ============ */
 const IMPORT_SPEC={

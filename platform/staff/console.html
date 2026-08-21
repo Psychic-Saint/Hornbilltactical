@@ -201,8 +201,18 @@ async function openIncident(id){
       ${i.supporting_info?`<div class="kv"><b>Extra info</b><span>${esc(i.supporting_info)}</span></div>`:""}
     </div>
     <div class="card" style="margin-bottom:14px"><b class="mute" style="font-size:.78rem">DESCRIPTION</b><p style="margin:8px 0 0">${esc(i.description||"—")}</p></div>
-    ${atts&&atts.length?`<div class="card" style="margin-bottom:14px"><b class="mute" style="font-size:.78rem">EVIDENCE</b>
-      <div style="margin-top:8px">${atts.map(a=>`<div class="filerow"><span>📄 ${esc(a.file_name)}</span><button class="btn btn-sm btn-ghost" onclick="dl('${esc(a.storage_path)}')">View</button></div>`).join("")}</div></div>`:""}
+    <div class="card" style="margin-bottom:14px"><b class="mute" style="font-size:.78rem">EVIDENCE</b>
+      <div style="margin-top:8px" id="attList_${id}">${(atts&&atts.length)?atts.map(a=>{
+        const icon=a.file_name.match(/\.(mp4|mov|avi|mkv|webm)$/i)?"🎥":a.file_name.match(/\.(jpg|jpeg|png|gif|webp|heic)$/i)?"🖼️":"📄";
+        return`<div class="filerow"><span>${icon} ${esc(a.file_name)}</span><button class="btn btn-sm btn-ghost" onclick="dl('${esc(a.storage_path)}')">View</button></div>`;}).join(""):'<p class="mute" style="font-size:.88rem;margin:4px 0">No evidence attached yet.</p>'}</div>
+      <div style="margin-top:10px">
+        <label class="filepick" style="display:block;border:1.5px dashed var(--line);border-radius:10px;padding:14px;text-align:center;color:var(--mute);cursor:pointer" for="ev_files_${id}">
+          📎 Upload evidence — photos, videos, documents<br><small style="font-size:.78rem">All file types · up to 200MB per file</small>
+        </label>
+        <input type="file" id="ev_files_${id}" multiple accept="*/*" style="display:none" onchange="uploadEvidence('${id}',this)">
+        <div id="ev_progress_${id}"></div>
+      </div>
+    </div>
 
     <div class="card gold" style="margin-bottom:14px"><h3 style="margin-top:0">Investigate</h3>
       <div class="row"><div class="field"><label>Status</label><select id="d_status">${statusSel}</select></div>
@@ -261,6 +271,29 @@ async function saveNewIncident(){
 }
 async function dl(path){const {data,error}=await sb.storage.from("evidence").createSignedUrl(path,120);
   if(error){toast("Could not open file","err");return;}window.open(data.signedUrl,"_blank");}
+async function uploadEvidence(incidentId,input){
+  const files=[...input.files];if(!files.length)return;
+  const prog=document.getElementById("ev_progress_"+incidentId);
+  const maxSize=200*1024*1024;
+  for(const f of files){
+    if(f.size>maxSize){toast(f.name+" exceeds 200MB","err");continue;}
+    prog.innerHTML=`<p class="mute" style="font-size:.85rem;margin:8px 0">Uploading ${esc(f.name)}…</p>`;
+    const path=`${incidentId}/${Date.now()}_${f.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
+    const {error:upErr}=await sb.storage.from("evidence").upload(path,f,{contentType:f.type||"application/octet-stream",upsert:false});
+    if(upErr){toast("Upload failed: "+upErr.message,"err");prog.innerHTML="";continue;}
+    await sb.from("incident_attachments").insert({incident_id:incidentId,file_name:f.name,storage_path:path});
+    /* Mirror to Google Drive */
+    if(HT_CONFIG.DRIVE_ENABLED){
+      try{
+        const b64=await fileToB64(f);
+        await callFn("drive-upload",{name:f.name,mime:f.type||"application/octet-stream",b64,
+          folder_id:HT_CONFIG.DRIVE_FOLDER_ID,meta:{incident_id:incidentId,source:"console"}});
+      }catch(_){}
+    }
+    toast(f.name+" uploaded","ok");
+  }
+  prog.innerHTML="";input.value="";openIncident(incidentId);
+}
 
 /* ============ CLIENTS ============ */
 views.clients=async()=>{
@@ -463,7 +496,14 @@ function newStaff(){
   openModal(`<div class="between"><h2 style="margin:0">Add staff member</h2><button class="x" onclick="closeModal()">×</button></div>
     <div class="field"><label>Full name</label><input id="s_name"></div>
     <div class="field"><label>Email *</label><input id="s_email" type="email"></div>
-    <div class="field"><label>Role</label><select id="s_role"><option value="agent">Agent</option><option value="admin">Admin</option></select></div>
+    <div class="field"><label>Role</label><select id="s_role">
+      <option value="admin">Admin</option>
+      <option value="agent" selected>Agent</option>
+      <option value="supervisor">Supervisor / Management</option>
+      <option value="technician">Technician / Support</option>
+      <option value="security_guard">Security Guard / Response</option>
+      <option value="control_room">Control Room / Drone Operation</option>
+    </select></div>
     <div class="field"><label>Temporary password *</label><input id="s_pw" placeholder="At least 8 characters"></div>
     <div class="err" id="s_err"></div>
     <button class="btn btn-primary btn-block" id="s_btn" onclick="saveStaff()">Create staff account</button>`);
@@ -472,9 +512,26 @@ async function saveStaff(){
   const g=id=>document.getElementById(id).value.trim();const err=document.getElementById("s_err");err.textContent="";
   if(!g("s_email")||g("s_pw").length<8){err.textContent="Email and 8+ char password required.";return;}
   const btn=document.getElementById("s_btn");btn.disabled=true;btn.textContent="Creating…";
-  const res=await callFn("admin-create-user",{kind:"staff",email:g("s_email"),password:g("s_pw"),full_name:g("s_name"),role:document.getElementById("s_role").value});
+  const email=g("s_email"),pw=g("s_pw"),name=g("s_name"),role=document.getElementById("s_role").value;
+  const res=await callFn("admin-create-user",{kind:"staff",email,password:pw,full_name:name,role});
   if(!res||!res.ok){err.textContent=res?.error||"Failed.";btn.disabled=false;btn.textContent="Create staff account";return;}
-  closeModal();toast("Staff account created","ok");nav("users");
+  /* Send welcome email with login details */
+  const loginUrl=window.location.origin+window.location.pathname.replace("console.html","login.html");
+  await callFn("send-welcome-email",{email,full_name:name,password:pw,role,login_url:loginUrl});
+  closeModal();
+  /* Show success card with copyable credentials */
+  openModal(`<div class="between"><h2 style="margin:0;color:var(--ok)">✅ Staff account created</h2><button class="x" onclick="closeModal();nav('users')">×</button></div>
+    <p style="margin:12px 0 6px;color:var(--mute);font-size:.9rem">A welcome email has been sent to <b>${esc(email)}</b> with their login link and credentials. You can also copy the details below as a backup.</p>
+    <div class="card" style="background:var(--steel2);margin:14px 0;font-size:.88rem">
+      <div class="kv"><b>Name</b><span>${esc(name)}</span></div>
+      <div class="kv"><b>Role</b><span>${esc(role.replace(/_/g," "))}</span></div>
+      <div class="kv"><b>Email</b><span style="font-family:var(--font-d)">${esc(email)}</span></div>
+      <div class="kv"><b>Password</b><span style="font-family:var(--font-d)">${esc(pw)}</span></div>
+      <div class="kv"><b>Login link</b><span style="font-family:var(--font-d);font-size:.78rem;word-break:break-all">${esc(loginUrl)}</span></div>
+    </div>
+    <button class="btn btn-steel btn-sm btn-block" onclick="navigator.clipboard.writeText('Email: ${esc(email)}\\nPassword: ${esc(pw)}\\nLogin: ${esc(loginUrl)}').then(()=>toast('Copied!','ok'))">📋 Copy credentials</button>
+    <button class="btn btn-primary btn-block" style="margin-top:10px" onclick="closeModal();nav('users')">Done</button>`);
+  nav("users");STAFF=(await sb.from("profiles").select("id,full_name,role,is_active").order("full_name")).data||[];
 }
 
 /* ============ AUDIT ============ */

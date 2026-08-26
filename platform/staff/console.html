@@ -56,6 +56,27 @@
 let ME,STAFF=[],CLIENTS=[];
 const clientObj=id=>CLIENTS.find(c=>c.id===id);
 const main=document.getElementById("main");
+
+/* ---- System modules (used for permission assignment) ---- */
+const MODULES=[
+  {id:"dashboard",label:"Dashboard",icon:"▚"},
+  {id:"incidents",label:"Incidents",icon:"📋"},
+  {id:"clients",label:"Clients",icon:"🏢"},
+  {id:"invoices",label:"Invoices / Finance",icon:"🧾"},
+  {id:"tasks",label:"Tasks & Requests",icon:"✔"},
+  {id:"users",label:"User Management",icon:"👥"},
+  {id:"audit",label:"Audit Trail",icon:"🗂️"},
+  {id:"settings",label:"Settings",icon:"⚙️"},
+];
+const ROLE_DEFAULTS={
+  admin:["dashboard","incidents","clients","invoices","tasks","users","audit","settings"],
+  supervisor:["dashboard","incidents","clients","invoices","tasks","users","audit"],
+  agent:["dashboard","incidents","clients","tasks"],
+  technician:["dashboard","incidents","tasks"],
+  security_guard:["incidents"],
+  control_room:["dashboard","incidents"],
+};
+
 function setActive(v){document.querySelectorAll(".side .item").forEach(a=>a.classList.toggle("active",a.dataset.v===v));
   document.querySelectorAll(".bn-item").forEach(a=>a.classList.toggle("active",a.dataset.bn===v));}
 function closeMobile(){document.querySelector('.side').classList.remove('open');document.querySelector('.backdrop').classList.remove('show');}
@@ -64,16 +85,58 @@ function close_(){document.getElementById("drawer").classList.remove("show");}
 function openModal(html){const m=document.getElementById("modal");m.innerHTML=`<div class="modal">${html}</div>`;m.classList.add("show");}
 function closeModal(){document.getElementById("modal").classList.remove("show");}
 
+/* ---- Apply nav filtering based on allowed_modules in profile ---- */
+function applyNavPermissions(me){
+  let allowed=me.profile.allowed_modules;
+  if(!allowed||!allowed.length){
+    if(me.profile.role==="admin") return;
+    allowed=ROLE_DEFAULTS[me.profile.role]||null;
+    if(!allowed) return;
+  }
+  document.querySelectorAll(".side .item[data-v]").forEach(a=>{
+    a.style.display=allowed.includes(a.dataset.v)?"":"none";
+  });
+  document.querySelectorAll(".bn-item[data-bn]").forEach(a=>{
+    a.style.display=allowed.includes(a.dataset.bn)?"":"none";
+  });
+}
+
+/* ---- Check if current user can do an action on a Job Card ---- */
+function canDo(action){
+  try{
+    const cfg=JSON.parse(localStorage.getItem("ht_role_actions")||"{}");
+    const role=ME?.profile?.role||"agent";
+    if(cfg[role]&&cfg[role][action]!==undefined) return cfg[role][action];
+  }catch(_){}
+  const defaults={
+    admin:{changeStatus:true,assign:true,addInternalNote:true,addClientUpdate:true,uploadEvidence:true,viewEvidence:true,viewContact:true},
+    supervisor:{changeStatus:true,assign:true,addInternalNote:true,addClientUpdate:true,uploadEvidence:true,viewEvidence:true,viewContact:true},
+    agent:{changeStatus:true,assign:false,addInternalNote:true,addClientUpdate:true,uploadEvidence:true,viewEvidence:true,viewContact:true},
+    technician:{changeStatus:true,assign:false,addInternalNote:true,addClientUpdate:false,uploadEvidence:true,viewEvidence:true,viewContact:false},
+    security_guard:{changeStatus:false,assign:false,addInternalNote:true,addClientUpdate:false,uploadEvidence:true,viewEvidence:false,viewContact:false},
+    control_room:{changeStatus:true,assign:true,addInternalNote:true,addClientUpdate:true,uploadEvidence:true,viewEvidence:true,viewContact:true},
+  };
+  return (defaults[ME?.profile?.role||"agent"]||defaults.agent)[action]??true;
+}
+
 (async()=>{
   ME=await requireRole("staff","login.html");if(!ME)return;
   applyOrgSettings();
   document.getElementById("whoPill").textContent=ME.profile.full_name+" · "+ME.profile.role;
-  const [{data:st},{data:cl}]=await Promise.all([
-    sb.from("profiles").select("id,full_name,role,is_active").order("full_name"),
-    sb.from("clients").select("*").order("name"),
-  ]);
-  STAFF=st||[];CLIENTS=cl||[];
-  nav("dashboard");
+  try{
+    const [{data:st},{data:cl}]=await Promise.all([
+      sb.from("profiles").select("*").order("full_name"),
+      sb.from("clients").select("*").order("name"),
+    ]);
+    STAFF=st||[];CLIENTS=cl||[];
+  }catch(e){
+    // Graceful fallback — DB query failed (e.g. during migration); continue with empty caches
+    console.warn("Init data load error:",e);
+  }
+  applyNavPermissions(ME);
+  const allowed=ME.profile.allowed_modules||ROLE_DEFAULTS[ME.profile.role];
+  const firstView=(allowed&&allowed.length)?allowed[0]:"dashboard";
+  nav(firstView);
 })();
 const staffName=id=>STAFF.find(s=>s.id===id)?.full_name||"Unassigned";
 const clientName=id=>CLIENTS.find(c=>c.id===id)?.name||"—";
@@ -82,11 +145,13 @@ const views={};
 /* ============ DASHBOARD ============ */
 views.dashboard=async()=>{
   main.innerHTML='<div class="spin"></div>';
-  const [{data:inc},{data:invs},{data:tasks}]=await Promise.all([
+  try{
+  const [{data:_inc},{data:_invs},{data:_tasks}]=await Promise.all([
     sb.from("incidents").select("id,reference,incident_type,status,source,client_id,urgency,created_at").order("created_at",{ascending:false}),
     sb.from("invoices").select("amount,status"),
     sb.from("tasks").select("id,status,is_client_request"),
   ]);
+  const inc=_inc||[],invs=_invs||[],tasks=_tasks||[];
   const c=s=>inc.filter(i=>i.status===s).length;
   const bySrc=s=>inc.filter(i=>i.source===s).length;
   const open=inc.filter(i=>!["resolved","closed"].includes(i.status)).length;
@@ -141,6 +206,7 @@ views.dashboard=async()=>{
   donut("chStatus",STATUS_ORDER.map(s=>STATUS[s].label),STATUS_ORDER.map(s=>c(s)),STATUS_ORDER.map(s=>STATUS[s].color));
   donut("chSource",["Guest","Client","Staff"],[bySrc("guest"),bySrc("client"),bySrc("staff")],["#F5A623","#5aa9ff","#8b929c"]);
   window.countUp&&window.countUp(main);startClock();
+  }catch(err){main.innerHTML=`<div class="page-head"><h2>Dashboard</h2></div><div class="card"><p class="mute">Could not load dashboard data — check your connection or Supabase settings.<br><small>${esc(String(err))}</small></p><button class="btn btn-primary" onclick="nav('dashboard')" style="margin-top:12px">Retry</button></div>`;}
 };
 function goIncidents(field,val){incFilter={source:"",status:""};if(field)incFilter[field]=val;nav("incidents");}
 let _clock;
@@ -196,35 +262,37 @@ async function openIncident(id){
       <div class="kv"><b>Location</b><span>${esc(i.location||"—")}</span></div>
       <div class="kv"><b>Occurred</b><span>${fmtDate(i.incident_date)}${i.incident_time?" · "+i.incident_time.slice(0,5):""}</span></div>
       <div class="kv"><b>Reported</b><span>${fmtDateTime(i.created_at)}</span></div>
-      <div class="kv"><b>Contact</b><span>${esc(i.contact_name||"—")}${i.contact_phone?" · "+esc(i.contact_phone):""}${i.contact_email?" · "+esc(i.contact_email):""}</span></div>
+      ${canDo("viewContact")?`<div class="kv"><b>Contact</b><span>${esc(i.contact_name||"—")}${i.contact_phone?" · "+esc(i.contact_phone):""}${i.contact_email?" · "+esc(i.contact_email):""}</span></div>`:'<div class="kv"><b>Contact</b><span class="mute">Restricted</span></div>'}
       ${i.people_involved?`<div class="kv"><b>People</b><span>${esc(i.people_involved)}</span></div>`:""}
       ${i.supporting_info?`<div class="kv"><b>Extra info</b><span>${esc(i.supporting_info)}</span></div>`:""}
     </div>
     <div class="card" style="margin-bottom:14px"><b class="mute" style="font-size:.78rem">DESCRIPTION</b><p style="margin:8px 0 0">${esc(i.description||"—")}</p></div>
     <div class="card" style="margin-bottom:14px"><b class="mute" style="font-size:.78rem">EVIDENCE</b>
-      <div style="margin-top:8px" id="attList_${id}">${(atts&&atts.length)?atts.map(a=>{
+      ${canDo("viewEvidence")?`<div style="margin-top:8px" id="attList_${id}">${(atts&&atts.length)?atts.map(a=>{
         const icon=a.file_name.match(/\.(mp4|mov|avi|mkv|webm)$/i)?"🎥":a.file_name.match(/\.(jpg|jpeg|png|gif|webp|heic)$/i)?"🖼️":"📄";
-        return`<div class="filerow"><span>${icon} ${esc(a.file_name)}</span><button class="btn btn-sm btn-ghost" onclick="dl('${esc(a.storage_path)}')">View</button></div>`;}).join(""):'<p class="mute" style="font-size:.88rem;margin:4px 0">No evidence attached yet.</p>'}</div>
-      <div style="margin-top:10px">
+        return`<div class="filerow"><span>${icon} ${esc(a.file_name)}</span><button class="btn btn-sm btn-ghost" onclick="dl('${esc(a.storage_path)}')">View</button></div>`;}).join(""):'<p class="mute" style="font-size:.88rem;margin:4px 0">No evidence attached yet.</p>'}</div>`:'<p class="mute" style="font-size:.88rem;margin:8px 0 4px">Evidence viewing is restricted for your role.</p>'}
+      ${canDo("uploadEvidence")?`<div style="margin-top:10px">
         <label class="filepick" style="display:block;border:1.5px dashed var(--line);border-radius:10px;padding:14px;text-align:center;color:var(--mute);cursor:pointer" for="ev_files_${id}">
           📎 Upload evidence — photos, videos, documents<br><small style="font-size:.78rem">All file types · up to 200MB per file</small>
         </label>
         <input type="file" id="ev_files_${id}" multiple accept="*/*" style="display:none" onchange="uploadEvidence('${id}',this)">
         <div id="ev_progress_${id}"></div>
+      </div>`:''}
+    </div>
+
+    ${canDo("changeStatus")||canDo("assign")?`<div class="card gold" style="margin-bottom:14px"><h3 style="margin-top:0">Investigate</h3>
+      <div class="row">
+        ${canDo("changeStatus")?`<div class="field"><label>Status</label><select id="d_status">${statusSel}</select></div>`:''}
+        ${canDo("assign")?`<div class="field"><label>Assign to</label><select id="d_assign">${staffSel}</select></div>`:''}
       </div>
-    </div>
-
-    <div class="card gold" style="margin-bottom:14px"><h3 style="margin-top:0">Investigate</h3>
-      <div class="row"><div class="field"><label>Status</label><select id="d_status">${statusSel}</select></div>
-        <div class="field"><label>Assign to</label><select id="d_assign">${staffSel}</select></div></div>
       <button class="btn btn-primary btn-sm" onclick="saveInvestigate('${id}')">Save changes</button>
-    </div>
+    </div>`:''}
 
-    <div class="card" style="margin-bottom:14px"><h3 style="margin-top:0">Communication</h3>
+    ${canDo("addInternalNote")||canDo("addClientUpdate")?`<div class="card" style="margin-bottom:14px"><h3 style="margin-top:0">Communication</h3>
       <div class="field" style="margin-bottom:8px"><label>Add an update</label><textarea id="d_body" placeholder="Write an update…"></textarea></div>
       <div class="wrap-gap">
-        <button class="btn btn-steel btn-sm" onclick="addUpdate('${id}','internal')">🛡️ Add internal note</button>
-        <button class="btn btn-primary btn-sm" onclick="addUpdate('${id}','client')">🔵 Post client-visible update</button>
+        ${canDo("addInternalNote")?`<button class="btn btn-steel btn-sm" onclick="addUpdate('${id}','internal')">🛡️ Add internal note</button>`:''}
+        ${canDo("addClientUpdate")?`<button class="btn btn-primary btn-sm" onclick="addUpdate('${id}','client')">🔵 Post client-visible update</button>`:''}
       </div>
       <p class="hint">Internal notes are never shown to the client. Client updates appear in their portal &amp; guest tracking.</p>
       <div style="margin-top:14px">${(updates||[]).map(u=>`<div class="note-card ${u.visibility==='client'?'note-client':'note-internal'}">
@@ -476,10 +544,13 @@ views.users=async()=>{
   STAFF=st||[];
   main.innerHTML=`<div class="page-head"><h2>Users</h2><button class="btn btn-primary" onclick="newStaff()">+ Add staff</button></div>
     <h3>Hornbill staff</h3>
-    <div class="tablewrap" style="margin-bottom:22px"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
-    <tbody>${(st||[]).map(s=>`<tr><td><b>${esc(s.full_name||"—")}</b></td><td>${esc(s.email||"—")}</td>
-      <td><span class="tag">${esc(s.role)}</span></td><td>${s.is_active?'<span class="ok">Active</span>':'<span class="mute">Disabled</span>'}</td>
-      <td style="text-align:right">${s.id===ME.user.id?'<span class="mute" style="font-size:.8rem">You</span>':`<button class="btn btn-sm" style="color:var(--crit);border:1px solid #ff4d4d44;background:none" onclick="deleteUser('${s.id}','${esc(s.full_name||s.email)}')">Delete</button>`}</td></tr>`).join("")}</tbody></table></div>
+    <div class="tablewrap" style="margin-bottom:22px"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Module access</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+    <tbody>${(st||[]).map(s=>{
+      const mods=s.allowed_modules&&s.allowed_modules.length?s.allowed_modules:ROLE_DEFAULTS[s.role]||MODULES.map(m=>m.id);
+      const modSummary=mods.length===MODULES.length?'<span class="tag" style="color:var(--gold)">All modules</span>':mods.slice(0,3).map(m=>`<span class="tag">${MODULES.find(x=>x.id===m)?.label||m}</span>`).join(" ")+(mods.length>3?` <small class="mute">+${mods.length-3}</small>`:"");
+      return`<tr><td><b>${esc(s.full_name||"—")}</b></td><td>${esc(s.email||"—")}</td>
+      <td><span class="tag">${esc(s.role)}</span></td><td style="max-width:220px">${modSummary}</td><td>${s.is_active?'<span class="ok">Active</span>':'<span class="mute">Disabled</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">${s.id===ME.user.id?'<span class="mute" style="font-size:.8rem">You</span>':`<button class="btn btn-sm btn-ghost" onclick="editUserPerms('${s.id}','${esc(s.full_name||s.email)}',${JSON.stringify(mods)})">Permissions</button> <button class="btn btn-sm" style="color:var(--crit);border:1px solid #ff4d4d44;background:none" onclick="deleteUser('${s.id}','${esc(s.full_name||s.email)}')">Delete</button>`}</td></tr>`;}).join("")}</tbody></table></div>
     <h3>Client portal users</h3>
     <div class="tablewrap"><table class="table"><thead><tr><th>Name</th><th>Email</th><th>Organisation</th><th style="text-align:right">Actions</th></tr></thead>
     <tbody>${(cu||[]).map(u=>`<tr><td><b>${esc(u.full_name||"—")}</b></td><td>${esc(u.email||"—")}</td><td>${esc(u.clients?.name||"—")}</td>
@@ -492,29 +563,74 @@ async function deleteUser(id,label){
   if(!res||!res.ok){toast(res?.error||"Delete failed","err");return;}
   toast("User deleted","ok");nav("users");
 }
+function editUserPerms(uid,uname,currentMods){
+  const modChecks=MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer">
+    <input type="checkbox" class="ep_mod" value="${m.id}" ${currentMods.includes(m.id)?"checked":""} style="width:16px;height:16px"> ${m.icon} ${m.label}</label>`).join("");
+  openModal(`<div class="between"><h2 style="margin:0">Permissions — ${esc(uname)}</h2><button class="x" onclick="closeModal()">×</button></div>
+    <p class="mute" style="font-size:.9rem">Choose which sections of the platform this person can access.</p>
+    <div style="background:var(--steel2);border-radius:10px;padding:14px 16px;margin:12px 0">${modChecks}
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.ep_mod').forEach(c=>c.checked=true)">Check all</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.ep_mod').forEach(c=>c.checked=false)">Uncheck all</button>
+      </div>
+    </div>
+    <button class="btn btn-primary btn-block" onclick="saveUserPerms('${uid}')">Save permissions</button>`);
+}
+async function saveUserPerms(uid){
+  const allowed_modules=[...document.querySelectorAll(".ep_mod:checked")].map(cb=>cb.value);
+  const {error}=await sb.from("profiles").update({allowed_modules}).eq("id",uid);
+  if(error){toast(error.message,"err");return;}
+  await sb.from("audit_log").insert({actor:ME.user.id,actor_label:ME.profile.full_name,action:"user.permissions_updated",entity:"profiles",entity_id:uid,meta:{allowed_modules}});
+  closeModal();toast("Permissions updated","ok");nav("users");
+}
 function newStaff(){
+  const modChecks=MODULES.map(m=>`<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:.88rem">
+    <input type="checkbox" class="s_mod" value="${m.id}" style="width:16px;height:16px"> ${m.icon} ${m.label}</label>`).join("");
   openModal(`<div class="between"><h2 style="margin:0">Add staff member</h2><button class="x" onclick="closeModal()">×</button></div>
     <div class="field"><label>Full name</label><input id="s_name"></div>
     <div class="field"><label>Email *</label><input id="s_email" type="email"></div>
-    <div class="field"><label>Role</label><select id="s_role">
-      <option value="admin">Admin</option>
-      <option value="agent" selected>Agent</option>
-      <option value="supervisor">Supervisor / Management</option>
-      <option value="technician">Technician / Support</option>
-      <option value="security_guard">Security Guard / Response</option>
-      <option value="control_room">Control Room / Drone Operation</option>
-    </select></div>
+    <div class="field"><label>Role <small>— sets default module access below</small></label>
+      <select id="s_role" onchange="applyRoleDefaults(this.value)">
+        <option value="admin">Admin</option>
+        <option value="agent" selected>Agent</option>
+        <option value="supervisor">Supervisor / Management</option>
+        <option value="technician">Technician / Support</option>
+        <option value="security_guard">Security Guard / Response</option>
+        <option value="control_room">Control Room / Drone Operation</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Module access <small>— what this person can see &amp; use</small></label>
+      <div style="background:var(--steel2);border-radius:10px;padding:14px 16px;margin-top:4px">${modChecks}
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="setAllMods(true)">Check all</button>
+          <button class="btn btn-ghost btn-sm" onclick="setAllMods(false)">Uncheck all</button>
+        </div>
+      </div>
+    </div>
     <div class="field"><label>Temporary password *</label><input id="s_pw" placeholder="At least 8 characters"></div>
     <div class="err" id="s_err"></div>
     <button class="btn btn-primary btn-block" id="s_btn" onclick="saveStaff()">Create staff account</button>`);
+  // Apply role defaults immediately
+  applyRoleDefaults("agent");
 }
+function applyRoleDefaults(role){
+  const defaults=ROLE_DEFAULTS[role]||MODULES.map(m=>m.id);
+  document.querySelectorAll(".s_mod").forEach(cb=>{cb.checked=defaults.includes(cb.value);});
+}
+function setAllMods(v){document.querySelectorAll(".s_mod").forEach(cb=>{cb.checked=v;});}
 async function saveStaff(){
   const g=id=>document.getElementById(id).value.trim();const err=document.getElementById("s_err");err.textContent="";
   if(!g("s_email")||g("s_pw").length<8){err.textContent="Email and 8+ char password required.";return;}
   const btn=document.getElementById("s_btn");btn.disabled=true;btn.textContent="Creating…";
   const email=g("s_email"),pw=g("s_pw"),name=g("s_name"),role=document.getElementById("s_role").value;
+  const allowed_modules=[...document.querySelectorAll(".s_mod:checked")].map(cb=>cb.value);
   const res=await callFn("admin-create-user",{kind:"staff",email,password:pw,full_name:name,role});
   if(!res||!res.ok){err.textContent=res?.error||"Failed.";btn.disabled=false;btn.textContent="Create staff account";return;}
+  // Save allowed_modules to the newly created profile
+  if(res.user_id&&allowed_modules.length){
+    await sb.from("profiles").update({allowed_modules}).eq("id",res.user_id);
+  }
   /* Send welcome email with login details */
   const loginUrl=window.location.origin+window.location.pathname.replace("console.html","login.html");
   await callFn("send-welcome-email",{email,full_name:name,password:pw,role,login_url:loginUrl});
@@ -531,7 +647,7 @@ async function saveStaff(){
     </div>
     <button class="btn btn-steel btn-sm btn-block" onclick="navigator.clipboard.writeText('Email: ${esc(email)}\\nPassword: ${esc(pw)}\\nLogin: ${esc(loginUrl)}').then(()=>toast('Copied!','ok'))">📋 Copy credentials</button>
     <button class="btn btn-primary btn-block" style="margin-top:10px" onclick="closeModal();nav('users')">Done</button>`);
-  nav("users");STAFF=(await sb.from("profiles").select("id,full_name,role,is_active").order("full_name")).data||[];
+  nav("users");STAFF=(await sb.from("profiles").select("*").order("full_name")).data||[];
 }
 
 /* ============ AUDIT ============ */
@@ -551,7 +667,8 @@ let settingsTab="analytics";
 const settingsViews={};
 views.settings=async()=>{
   const tabs=[["analytics","📊 Analytics"],["storage","🗄️ Storage"],["billing","💳 Billing & cash flow"],
-    ["company","🏷️ Company & branding"],["notify","🔔 Notifications"],["integrations","🔌 Integrations"],["backup","💾 Backup & export"]];
+    ["company","🏷️ Company & branding"],["invoice","🧾 Invoice settings"],
+    ["roles","🔐 Roles & access"],["notify","🔔 Notifications"],["integrations","🔌 Integrations"],["backup","💾 Backup & export"]];
   main.innerHTML=`<div class="page-head"><h2>Settings</h2></div>
     <div class="wrap-gap" style="margin-bottom:16px">${tabs.map(([k,l])=>`<span class="chip-filter ${settingsTab===k?"on":""}" onclick="settingsTab='${k}';nav('settings')">${l}</span>`).join("")}</div>
     <div id="settingsBody"><div class="spin"></div></div>`;
@@ -660,9 +777,11 @@ settingsViews.company=async()=>{
   const el=document.getElementById("settingsBody");
   const {data:s,error}=await sb.from("org_settings").select("*").eq("id",true).maybeSingle();
   if(error||!s){el.innerHTML=`<p class="mute">Could not load company settings.</p>`;return;}
-  el.innerHTML=`<div class="card gold" style="max-width:640px">
+  const savedLogo=localStorage.getItem("ht_logo_b64")||"";
+  el.innerHTML=`<div class="grid g2" style="align-items:start;gap:18px">
+  <div class="card gold">
     <h3 style="margin-top:0">Company details</h3>
-    <p class="mute" style="font-size:.85rem;margin-top:-6px">Used on invoice PDFs and branded emails. Changes apply immediately, site-wide.</p>
+    <p class="mute" style="font-size:.85rem;margin-top:-6px">Used on invoice PDFs, emails and exports. Changes apply immediately, site-wide.</p>
     <div class="field"><label>Company name</label><input id="cs_name" value="${esc(s.company_name||"")}"></div>
     <div class="field"><label>Tagline</label><input id="cs_tagline" value="${esc(s.tagline||"")}"></div>
     <div class="field"><label>Address</label><input id="cs_addr" value="${esc(s.address||"")}"></div>
@@ -671,11 +790,53 @@ settingsViews.company=async()=>{
     <div class="row"><div class="field"><label>Registration no.</label><input id="cs_reg" value="${esc(s.reg_number||"")}"></div>
       <div class="field"><label>VAT no.</label><input id="cs_vat" value="${esc(s.vat_number||"")}"></div></div>
     <div class="field"><label>VAT rate <small>(e.g. 0.15 for 15%)</small></label><input id="cs_vatrate" type="number" step="0.01" value="${s.vat_rate??0.15}"></div>
-    <div class="field"><label>Banking details</label><textarea id="cs_bank">${esc(s.bank_details||"")}</textarea></div>
+    <div class="field"><label>Banking details <small>(appears on every invoice)</small></label><textarea id="cs_bank" rows="3">${esc(s.bank_details||"")}</textarea></div>
     <div class="err" id="cs_err"></div>
     <button class="btn btn-primary" onclick="saveCompanySettings()">Save changes</button>
+  </div>
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Company logo</h3>
+      <p class="mute" style="font-size:.85rem">Upload your logo — it will appear on invoice PDFs and Excel exports. PNG or JPG, recommended size 400×150px.</p>
+      ${savedLogo?`<div style="margin-bottom:12px;background:#fff;border-radius:8px;padding:10px;display:inline-block"><img src="${savedLogo}" style="max-height:70px;max-width:220px" alt="Logo preview"></div><br>`:""}
+      <label style="display:block;border:1.5px dashed var(--line);border-radius:10px;padding:14px;text-align:center;color:var(--mute);cursor:pointer" for="logo_file">
+        🖼️ Click to upload logo file<br><small style="font-size:.78rem">PNG, JPG, SVG · max 2MB</small>
+      </label>
+      <input type="file" id="logo_file" accept="image/*" style="display:none" onchange="previewLogo(this)">
+      <div id="logo_preview" style="margin-top:10px"></div>
+      ${savedLogo?`<button class="btn btn-sm" style="margin-top:8px;color:var(--crit);border:1px solid #ff4d4d44;background:none" onclick="removeLogo()">Remove logo</button>`:""}
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Migration note</h3>
+      <p class="mute" style="font-size:.82rem;margin:0 0 8px">To enable module permissions (allowed_modules), run this SQL once in your Supabase SQL editor:</p>
+      <div style="background:#0a0b0d;border-radius:8px;padding:12px;font-family:var(--font-d);font-size:.78rem;color:#4ade80;white-space:pre-wrap">ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS allowed_modules text[];
+ALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS logo_b64 text;
+ALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS invoice_config jsonb;</div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="navigator.clipboard.writeText('ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS allowed_modules text[];\nALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS logo_b64 text;\nALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS invoice_config jsonb;').then(()=>toast('SQL copied!','ok'))">📋 Copy SQL</button>
+    </div>
+  </div>
   </div>`;
 };
+function previewLogo(input){
+  const file=input.files[0];if(!file)return;
+  if(file.size>2*1024*1024){toast("Logo must be under 2MB","err");return;}
+  const r=new FileReader();
+  r.onload=(e)=>{
+    const b64=e.target.result;
+    localStorage.setItem("ht_logo_b64",b64);
+    // Try to save to DB too
+    sb.from("org_settings").update({logo_b64:b64}).eq("id",true).then(()=>{});
+    document.getElementById("logo_preview").innerHTML=`<div style="margin-top:8px;background:#fff;border-radius:8px;padding:10px;display:inline-block">
+      <img src="${b64}" style="max-height:70px;max-width:220px" alt="Preview"></div><p class="mute" style="font-size:.8rem;margin:6px 0 0">✓ Logo saved</p>`;
+    toast("Logo uploaded","ok");
+  };
+  r.readAsDataURL(file);
+}
+function removeLogo(){
+  localStorage.removeItem("ht_logo_b64");
+  sb.from("org_settings").update({logo_b64:null}).eq("id",true).then(()=>{});
+  toast("Logo removed","ok");settingsViews.company();
+}
 async function saveCompanySettings(){
   const g=id=>document.getElementById(id).value.trim();
   const payload={company_name:g("cs_name"),tagline:g("cs_tagline"),address:g("cs_addr"),email:g("cs_email"),phone:g("cs_phone"),
@@ -686,6 +847,187 @@ async function saveCompanySettings(){
   await sb.from("audit_log").insert({actor:ME.user.id,actor_label:ME.profile.full_name,action:"settings.company_updated",entity:"org_settings"});
   applyOrgSettings();
   toast("Company settings saved","ok");
+}
+
+/* ---- Invoice settings ---- */
+settingsViews.invoice=async()=>{
+  const el=document.getElementById("settingsBody");
+  let cfg={};try{cfg=JSON.parse(localStorage.getItem("ht_invoice_cfg")||"{}");}catch(_){}
+  // Also try loading from DB
+  try{const {data:s}=await sb.from("org_settings").select("invoice_config").eq("id",true).maybeSingle();if(s?.invoice_config) cfg={...s.invoice_config,...cfg};}catch(_){}
+
+  const incCols=["reference","source","incident_type","client_name","urgency","status","location","incident_date","contact_name","contact_email","contact_phone","created_at"];
+  const invCols=["number","client_name","description","amount","currency","issued_date","due_date","status","sent_at"];
+  const clientCols=["name","contact_email","contact_phone","address"];
+  const mkColChecks=(cols,cfgKey)=>cols.map(c=>{
+    const enabled=cfg[cfgKey]?cfg[cfgKey].includes(c):(true);
+    return`<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:.85rem"><input type="checkbox" class="${cfgKey}_col" value="${c}" ${enabled?"checked":""} style="width:14px;height:14px"> ${c}</label>`;
+  }).join("");
+
+  el.innerHTML=`<div class="grid g2" style="align-items:start;gap:18px">
+  <div>
+    <div class="card gold" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Invoice appearance</h3>
+      <p class="mute" style="font-size:.85rem;margin-top:-6px">Customise how PDF invoices look and what they contain.</p>
+      <div class="row">
+        <div class="field"><label>Primary colour <small>(header)</small></label>
+          <input type="color" id="inv_primary" value="${cfg.primary||'#0a0b0d'}" style="height:42px;padding:4px;cursor:pointer"></div>
+        <div class="field"><label>Accent colour <small>(gold highlights)</small></label>
+          <input type="color" id="inv_accent" value="${cfg.accent||'#F5A623'}" style="height:42px;padding:4px;cursor:pointer"></div>
+      </div>
+      <div class="field"><label>Invoice header subtitle <small>(below company name)</small></label>
+        <input id="inv_header_sub" value="${esc(cfg.header_sub||'')}"></div>
+      <div class="field"><label>Payment terms <small>(shown above totals)</small></label>
+        <input id="inv_terms" value="${esc(cfg.payment_terms||'Payment due within 30 days of invoice date.')}"></div>
+      <div class="field"><label>Footer / "thank you" message</label>
+        <input id="inv_footer" value="${esc(cfg.footer_msg||'Thank you for your business.')}"></div>
+      <div class="field"><label>Invoice number prefix <small>(e.g. INV, HT, 2026)</small></label>
+        <input id="inv_prefix" value="${esc(cfg.inv_prefix||'INV')}"></div>
+      <div class="field"><label>Show VAT breakdown on invoice</label>
+        <select id="inv_show_vat"><option value="yes" ${cfg.show_vat!=="no"?"selected":""}>Yes — show subtotal + VAT line</option><option value="no" ${cfg.show_vat==="no"?"selected":""}>No — show total only</option></select></div>
+      <button class="btn btn-primary" onclick="saveInvoiceSettings()">Save invoice settings</button>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Invoice number preview</h3>
+      <div id="inv_num_preview" style="font-family:var(--font-d);font-size:1.1rem;color:var(--gold);margin:6px 0">${cfg.inv_prefix||'INV'}-2026-0001</div>
+      <p class="mute" style="font-size:.82rem">Numbers are generated sequentially when you create an invoice.</p>
+    </div>
+  </div>
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Incidents export — columns</h3>
+      <p class="mute" style="font-size:.82rem;margin-top:-4px">Choose which columns appear when you export incidents to Excel.</p>
+      <div style="columns:2;gap:10px">${mkColChecks(incCols,"inc")}</div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.inc_col').forEach(c=>c.checked=true)">All</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.inc_col').forEach(c=>c.checked=false)">None</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Invoices export — columns</h3>
+      <div style="columns:2;gap:10px">${mkColChecks(invCols,"inv_exp")}</div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.inv_exp_col').forEach(c=>c.checked=true)">All</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.inv_exp_col').forEach(c=>c.checked=false)">None</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Clients export — columns</h3>
+      <div>${mkColChecks(clientCols,"cli")}</div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.cli_col').forEach(c=>c.checked=true)">All</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.querySelectorAll('.cli_col').forEach(c=>c.checked=false)">None</button>
+      </div>
+    </div>
+    <div style="margin-top:10px;text-align:right">
+      <button class="btn btn-primary btn-sm" onclick="saveColumnSettings()">Save column settings</button>
+    </div>
+  </div>
+  </div>`;
+  // Live preview of invoice number
+  document.getElementById("inv_prefix").addEventListener("input",e=>{
+    document.getElementById("inv_num_preview").textContent=e.target.value+"-2026-0001";
+  });
+};
+function saveInvoiceSettings(){
+  const g=id=>document.getElementById(id).value;
+  const cfg={
+    primary:g("inv_primary"),accent:g("inv_accent"),
+    header_sub:g("inv_header_sub"),payment_terms:g("inv_terms"),
+    footer_msg:g("inv_footer"),inv_prefix:g("inv_prefix"),
+    show_vat:g("inv_show_vat"),
+  };
+  // Preserve existing column settings
+  try{const ex=JSON.parse(localStorage.getItem("ht_invoice_cfg")||"{}");Object.assign(cfg,{inc:ex.inc,inv_exp:ex.inv_exp,cli:ex.cli});}catch(_){}
+  localStorage.setItem("ht_invoice_cfg",JSON.stringify(cfg));
+  sb.from("org_settings").update({invoice_config:cfg}).eq("id",true).then(()=>{});
+  toast("Invoice settings saved","ok");
+}
+function saveColumnSettings(){
+  const inc=[...document.querySelectorAll(".inc_col:checked")].map(c=>c.value);
+  const inv_exp=[...document.querySelectorAll(".inv_exp_col:checked")].map(c=>c.value);
+  const cli=[...document.querySelectorAll(".cli_col:checked")].map(c=>c.value);
+  let cfg={};try{cfg=JSON.parse(localStorage.getItem("ht_invoice_cfg")||"{}");}catch(_){}
+  Object.assign(cfg,{inc,inv_exp,cli});
+  localStorage.setItem("ht_invoice_cfg",JSON.stringify(cfg));
+  sb.from("org_settings").update({invoice_config:cfg}).eq("id",true).then(()=>{});
+  toast("Column settings saved","ok");
+}
+// Helper: get active columns for a data type (falls back to all if none saved)
+function getActiveCols(kind,allCols){
+  try{const cfg=JSON.parse(localStorage.getItem("ht_invoice_cfg")||"{}");if(cfg[kind]&&cfg[kind].length) return cfg[kind];}catch(_){}
+  return allCols;
+}
+
+/* ---- Roles & Access ---- */
+settingsViews.roles=async()=>{
+  const el=document.getElementById("settingsBody");
+  const roleList=["admin","supervisor","agent","technician","security_guard","control_room"];
+  const actions=[
+    {id:"changeStatus",label:"Change incident status"},
+    {id:"assign",label:"Assign incident to staff"},
+    {id:"addInternalNote",label:"Add internal notes"},
+    {id:"addClientUpdate",label:"Post client-visible updates"},
+    {id:"uploadEvidence",label:"Upload evidence"},
+    {id:"viewEvidence",label:"View / download evidence"},
+    {id:"viewContact",label:"View contact details"},
+  ];
+  let cfg={};try{cfg=JSON.parse(localStorage.getItem("ht_role_actions")||"{}");}catch(_){}
+  const defaults={
+    admin:{changeStatus:true,assign:true,addInternalNote:true,addClientUpdate:true,uploadEvidence:true,viewEvidence:true,viewContact:true},
+    supervisor:{changeStatus:true,assign:true,addInternalNote:true,addClientUpdate:true,uploadEvidence:true,viewEvidence:true,viewContact:true},
+    agent:{changeStatus:true,assign:false,addInternalNote:true,addClientUpdate:true,uploadEvidence:true,viewEvidence:true,viewContact:true},
+    technician:{changeStatus:true,assign:false,addInternalNote:true,addClientUpdate:false,uploadEvidence:true,viewEvidence:true,viewContact:false},
+    security_guard:{changeStatus:false,assign:false,addInternalNote:true,addClientUpdate:false,uploadEvidence:true,viewEvidence:false,viewContact:false},
+    control_room:{changeStatus:true,assign:true,addInternalNote:true,addClientUpdate:true,uploadEvidence:true,viewEvidence:true,viewContact:true},
+  };
+  const roleLabelMap={admin:"Admin",supervisor:"Supervisor / Management",agent:"Agent",technician:"Technician / Support",security_guard:"Security Guard / Response",control_room:"Control Room / Drone"};
+  // Merge defaults with saved
+  roleList.forEach(r=>{if(!cfg[r]) cfg[r]={...defaults[r]};});
+
+  const rows=roleList.map(role=>{
+    const cols=actions.map(a=>{
+      const checked=cfg[role]?.[a.id]??defaults[role]?.[a.id]??true;
+      return`<td style="text-align:center"><input type="checkbox" class="ra_cb" data-role="${role}" data-action="${a.id}" ${checked?"checked":""} style="width:16px;height:16px"></td>`;
+    }).join("");
+    return`<tr><td><b>${roleLabelMap[role]}</b></td>${cols}</tr>`;
+  }).join("");
+
+  el.innerHTML=`<div class="card gold" style="margin-bottom:18px">
+    <h3 style="margin-top:0">Job Card — what each role can do</h3>
+    <p class="mute" style="font-size:.85rem;margin-top:-6px">Controls what staff with each role see and can do inside an incident/job card. These are applied immediately across all sessions.</p>
+    <div class="tablewrap" style="margin-top:14px"><table class="table">
+      <thead><tr><th>Role</th>${actions.map(a=>`<th style="text-align:center;font-size:.78rem;max-width:80px">${a.label}</th>`).join("")}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="saveRoleActions()">Save role settings</button>
+      <button class="btn btn-ghost btn-sm" onclick="resetRoleDefaults()">Reset to defaults</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Module access defaults by role</h3>
+    <p class="mute" style="font-size:.85rem">These are the default modules assigned when you create a new staff account. You can override per-person in Users → Permissions.</p>
+    <div class="tablewrap"><table class="table">
+      <thead><tr><th>Role</th><th>Default modules</th></tr></thead>
+      <tbody>${roleList.map(role=>`<tr><td><b>${roleLabelMap[role]}</b></td><td>${(ROLE_DEFAULTS[role]||[]).map(m=>{const mod=MODULES.find(x=>x.id===m);return mod?`<span class="tag">${mod.icon} ${mod.label}</span>`:m;}).join(" ")}</td></tr>`).join("")}</tbody>
+    </table></div>
+  </div>`;
+};
+function saveRoleActions(){
+  const cfg={};
+  document.querySelectorAll(".ra_cb").forEach(cb=>{
+    const {role,action}=cb.dataset;
+    if(!cfg[role]) cfg[role]={};
+    cfg[role][action]=cb.checked;
+  });
+  localStorage.setItem("ht_role_actions",JSON.stringify(cfg));
+  toast("Role settings saved","ok");
+}
+function resetRoleDefaults(){
+  localStorage.removeItem("ht_role_actions");
+  toast("Reset to defaults","ok");
+  settingsViews.roles();
 }
 
 /* ---- Notifications ---- */
@@ -781,24 +1123,32 @@ const IMPORT_SPEC={
   incidents:{title:"Incidents",headers:["incident_type","description","location","client_name","urgency","incident_date","incident_time","status","source","contact_name","contact_email","contact_phone"],
     sample:["Suspicious Activity","Loitering at gate","North Gate","ABC Property Management","high","2026-08-10","21:40","received","staff","","",""]},
 };
-/* Branded workbook writer (Hornbill gold + charcoal) using ExcelJS */
-async function saveBrandedXlsx(fname, sheetName, headers, rows, title){
+/* Branded workbook writer — uses custom colours from Invoice Settings */
+function hexToArgb(hex){
+  const h=hex.replace("#","").padStart(6,"0");return "FF"+h.toUpperCase();
+}
+async function saveBrandedXlsx(fname, sheetName, headers, rows, title, accentHex, primaryHex){
+  // Load colours from saved settings if not passed
+  if(!accentHex||!primaryHex){
+    try{const cfg=JSON.parse(localStorage.getItem("ht_invoice_cfg")||"{}");accentHex=cfg.accent||"#F5A623";primaryHex=cfg.primary||"#0A0B0D";}catch(_){accentHex="#F5A623";primaryHex="#0A0B0D";}
+  }
+  const ACCENT=hexToArgb(accentHex);const PRIMARY=hexToArgb(primaryHex);
   const wb=new ExcelJS.Workbook();wb.creator="Hornbill Tactical";wb.created=new Date();
   const ws=wb.addWorksheet(sheetName,{views:[{state:"frozen",ySplit:2}],properties:{defaultRowHeight:18}});
   const n=headers.length;
   ws.mergeCells(1,1,1,n);
   const t=ws.getCell(1,1);
   t.value="  🦅  "+title;
-  t.font={name:"Arial",size:14,bold:true,color:{argb:"FFF5A623"}};
-  t.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF0A0B0D"}};
+  t.font={name:"Arial",size:14,bold:true,color:{argb:ACCENT}};
+  t.fill={type:"pattern",pattern:"solid",fgColor:{argb:PRIMARY}};
   t.alignment={vertical:"middle",horizontal:"left"};
   ws.getRow(1).height=30;
   const hr=ws.getRow(2);
   headers.forEach((h,i)=>{const c=hr.getCell(i+1);c.value=h;
     c.font={name:"Arial",bold:true,size:11,color:{argb:"FF1A1205"}};
-    c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF5A623"}};
+    c.fill={type:"pattern",pattern:"solid",fgColor:{argb:ACCENT}};
     c.alignment={vertical:"middle"};
-    c.border={bottom:{style:"medium",color:{argb:"FFBE8319"}}};});
+    c.border={bottom:{style:"medium",color:{argb:ACCENT}}};});
   hr.height=24;
   rows.forEach((row,ri)=>{const r=ws.getRow(ri+3);
     headers.forEach((h,ci)=>{const c=r.getCell(ci+1);const v=row[h];
@@ -882,17 +1232,26 @@ async function runImport(kind){
 
 /* ============ EXCEL EXPORT ============ */
 async function exportData(kind){
-  let rows=[];
+  let allRows=[],allCols=[];
   if(kind==="clients"){const {data}=await sb.from("clients").select("*").order("name");
-    rows=(data||[]).map(c=>({name:c.name,contact_email:c.contact_email,contact_phone:c.contact_phone,address:c.address,is_active:c.is_active}));}
+    allCols=["name","contact_email","contact_phone","address","is_active"];
+    allRows=(data||[]).map(c=>({name:c.name,contact_email:c.contact_email,contact_phone:c.contact_phone,address:c.address,is_active:c.is_active}));}
   else if(kind==="invoices"){const {data}=await sb.from("invoices").select("*").order("issued_date",{ascending:false});
-    rows=(data||[]).map(i=>({number:i.number,client_name:clientName(i.client_id),description:i.description,amount:i.amount,currency:i.currency,issued_date:i.issued_date,due_date:i.due_date,status:i.status,sent_at:i.sent_at}));}
+    allCols=["number","client_name","description","amount","currency","issued_date","due_date","status","sent_at"];
+    allRows=(data||[]).map(i=>({number:i.number,client_name:clientName(i.client_id),description:i.description,amount:i.amount,currency:i.currency,issued_date:i.issued_date,due_date:i.due_date,status:i.status,sent_at:i.sent_at}));}
   else if(kind==="incidents"){const {data}=await sb.from("incidents").select("*").order("created_at",{ascending:false});
-    rows=(data||[]).map(i=>({reference:i.reference,source:i.source,incident_type:i.incident_type,client_name:i.client_id?clientName(i.client_id):"",status:i.status,urgency:i.urgency,location:i.location,incident_date:i.incident_date,incident_time:i.incident_time,contact_name:i.contact_name,contact_email:i.contact_email,contact_phone:i.contact_phone,created_at:i.created_at}));}
-  if(!rows.length){toast("Nothing to export","err");return;}
-  const headers=Object.keys(rows[0]);
+    allCols=["reference","source","incident_type","client_name","urgency","status","location","incident_date","contact_name","contact_email","contact_phone","created_at"];
+    allRows=(data||[]).map(i=>({reference:i.reference,source:i.source,incident_type:i.incident_type,client_name:i.client_id?clientName(i.client_id):"",status:i.status,urgency:i.urgency,location:i.location,incident_date:i.incident_date,contact_name:i.contact_name,contact_email:i.contact_email,contact_phone:i.contact_phone,created_at:i.created_at}));}
+  if(!allRows.length){toast("Nothing to export","err");return;}
+  // Apply column filter from Invoice/Column settings
+  const cfgKey=kind==="incidents"?"inc":kind==="invoices"?"inv_exp":"cli";
+  const headers=getActiveCols(cfgKey,allCols);
+  const rows=allRows.map(r=>{const o={};headers.forEach(h=>o[h]=r[h]);return o;});
+  // Get custom colours from invoice config
+  let accent="#F5A623",primary="#0a0b0d";
+  try{const cfg=JSON.parse(localStorage.getItem("ht_invoice_cfg")||"{}");if(cfg.accent)accent=cfg.accent;if(cfg.primary)primary=cfg.primary;}catch(_){}
   await saveBrandedXlsx(`hornbill-${kind}-${new Date().toISOString().slice(0,10)}.xlsx`,kind,headers,rows,
-    `HORNBILL TACTICAL · ${kind.toUpperCase()} EXPORT · ${new Date().toLocaleDateString("en-ZA")}`);
+    `HORNBILL TACTICAL · ${kind.toUpperCase()} EXPORT · ${new Date().toLocaleDateString("en-ZA")}`,accent,primary);
   toast("Exported "+rows.length+" "+kind,"ok");
 }
 </script>

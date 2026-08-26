@@ -69,15 +69,20 @@ async function whoami(){
   const { data:{ session } } = await sb.auth.getSession();
   if(!session) return null;
   const uid = session.user.id;
-  const { data: prof } = await sb.from("profiles").select("*").eq("id",uid).maybeSingle();
-  if(prof) return { kind:"staff", user:session.user, profile:prof };
-  const { data: cu } = await sb.from("client_users").select("*, clients(*)").eq("id",uid).maybeSingle();
-  if(cu) return { kind:"client", user:session.user, clientUser:cu, client:cu.clients };
-  return { kind:"unknown", user:session.user };
+  /* 20s timeout prevents infinite hang on Supabase free-tier cold starts */
+  const tmout=new Promise((_,r)=>setTimeout(()=>r('db_timeout'),20000));
+  try{
+    const { data: prof } = await Promise.race([sb.from("profiles").select("*").eq("id",uid).maybeSingle(),tmout]);
+    if(prof) return { kind:"staff", user:session.user, profile:prof };
+    const { data: cu } = await Promise.race([sb.from("client_users").select("*, clients(*)").eq("id",uid).maybeSingle(),tmout]);
+    if(cu) return { kind:"client", user:session.user, clientUser:cu, client:cu.clients };
+    return { kind:"unknown", user:session.user };
+  }catch(e){ return { kind:"timeout", user:session?.user }; }
 }
 async function requireRole(kind,loginUrl){
   const me = await whoami();
   if(!me){ location.href=loginUrl; return null; }
+  if(me.kind==="timeout") return me; /* let the calling page show a helpful message */
   if(me.kind!==kind){
     if(me.kind==="staff") location.href="console.html";
     else if(me.kind==="client") location.href="portal.html";
@@ -130,25 +135,49 @@ function fileToB64(file){return new Promise((res,rej)=>{const r=new FileReader()
 const qs=(k)=>new URLSearchParams(location.search).get(k);
 
 /* ============ INVOICE PDF (jsPDF) ============ */
+/* Reads logo + customisation from localStorage (set in Settings → Invoice settings) */
+function _invCfg(){try{return JSON.parse(localStorage.getItem("ht_invoice_cfg")||"{}");}catch(_){return{};}}
+function _hexRgb(hex){const h=hex.replace("#","");return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];}
+
 function makeInvoicePdf(inv, client){
   const CO=HT_CONFIG.COMPANY;
+  const cfg=_invCfg();
   const { jsPDF }=window.jspdf;
   const doc=new jsPDF({unit:"pt",format:"a4"});
   const W=doc.internal.pageSize.getWidth();
-  const gold=[245,166,35], ink=[20,23,27], mute=[120,125,135];
-  // header band
-  doc.setFillColor(10,11,13);doc.rect(0,0,W,96,"F");
+  // Colours — from Settings or defaults
+  const gold=cfg.accent?_hexRgb(cfg.accent):[245,166,35];
+  const header=cfg.primary?_hexRgb(cfg.primary):[10,11,13];
+  const ink=[20,23,27], mute=[120,125,135];
+  const footerMsg=cfg.footer_msg||"Thank you for your business.";
+  const payTerms=cfg.payment_terms||"";
+  const showVat=cfg.show_vat!=="no";
+
+  // Header band
+  doc.setFillColor(...header);doc.rect(0,0,W,96,"F");
   doc.setFillColor(...gold);doc.rect(0,96,W,4,"F");
+
+  // Logo if uploaded
+  const logoB64=localStorage.getItem("ht_logo_b64");
+  let headerTextX=40;
+  if(logoB64){
+    try{
+      const ext=logoB64.startsWith("data:image/png")?"PNG":"JPEG";
+      doc.addImage(logoB64,ext,36,14,120,62,undefined,"FAST");
+      headerTextX=170;
+    }catch(_){}
+  }
+
   doc.setTextColor(...gold);doc.setFont("helvetica","bold");doc.setFontSize(22);
-  doc.text(CO.name.toUpperCase(),40,50);
+  doc.text(CO.name.toUpperCase(),headerTextX,50);
   doc.setTextColor(200,205,212);doc.setFont("helvetica","normal");doc.setFontSize(9);
-  doc.text(CO.tagline,40,68);
+  doc.text(cfg.header_sub||CO.tagline,headerTextX,68);
   doc.setTextColor(255,255,255);doc.setFont("helvetica","bold");doc.setFontSize(20);
   doc.text("INVOICE",W-40,50,{align:"right"});
   doc.setFont("helvetica","normal");doc.setFontSize(10);doc.setTextColor(200,205,212);
   doc.text(inv.number||"",W-40,68,{align:"right"});
 
-  // meta
+  // Meta
   let y=140;
   doc.setTextColor(...mute);doc.setFontSize(8);doc.text("BILL TO",40,y);
   doc.text("INVOICE DETAILS",W-220,y);
@@ -157,37 +186,42 @@ function makeInvoicePdf(inv, client){
   doc.setFont("helvetica","normal");doc.setFontSize(9);doc.setTextColor(80,85,92);
   let cy=y+34;
   [client?.contact_email,client?.contact_phone,client?.address].filter(Boolean).forEach(t=>{doc.text(String(t),40,cy);cy+=13;});
-  // right meta
   const meta=[["Issued",fmtDate(inv.issued_date)],["Due",fmtDate(inv.due_date)],["Status",(inv.status||"").toUpperCase()]];
   let my=y+18;doc.setTextColor(80,85,92);
   meta.forEach(([k,v])=>{doc.setFont("helvetica","normal");doc.text(k,W-220,my);doc.setFont("helvetica","bold");doc.setTextColor(...ink);doc.text(String(v),W-40,my,{align:"right"});doc.setTextColor(80,85,92);my+=16;});
 
-  // table
+  // Payment terms
   let ty=Math.max(cy,my)+24;
+  if(payTerms){doc.setTextColor(...mute);doc.setFontSize(8);doc.text(payTerms,40,ty);ty+=16;}
+
+  // Table header
   doc.setFillColor(245,246,248);doc.rect(40,ty,W-80,26,"F");
   doc.setTextColor(...mute);doc.setFontSize(8);doc.setFont("helvetica","bold");
   doc.text("DESCRIPTION",50,ty+17);doc.text("AMOUNT",W-50,ty+17,{align:"right"});
   ty+=26;
-  const total=Number(inv.amount||0), rate=CO.vatRate||0, sub=rate?total/(1+rate):total, vat=total-sub;
+  const total=Number(inv.amount||0), rate=CO.vatRate||0, sub=rate&&showVat?total/(1+rate):total, vat=total-sub;
   doc.setTextColor(...ink);doc.setFont("helvetica","normal");doc.setFontSize(10);
   doc.text(inv.description||"Security services",50,ty+20,{maxWidth:W-200});
-  doc.text(money(sub,inv.currency),W-50,ty+20,{align:"right"});
+  doc.text(money(showVat?sub:total,inv.currency),W-50,ty+20,{align:"right"});
   ty+=44;doc.setDrawColor(225,228,232);doc.line(40,ty,W-40,ty);
-  // totals
-  const rows=[["Subtotal",money(sub,inv.currency)],[`VAT (${Math.round(rate*100)}%)`,money(vat,inv.currency)]];
+
+  // Totals
   let ry=ty+20;doc.setFontSize(10);
-  rows.forEach(([k,v])=>{doc.setTextColor(80,85,92);doc.text(k,W-200,ry);doc.setTextColor(...ink);doc.text(v,W-50,ry,{align:"right"});ry+=18;});
-  doc.setFillColor(10,11,13);doc.rect(W-230,ry-2,190,30,"F");
+  if(showVat&&rate){
+    const trows=[["Subtotal",money(sub,inv.currency)],[`VAT (${Math.round(rate*100)}%)`,money(vat,inv.currency)]];
+    trows.forEach(([k,v])=>{doc.setTextColor(80,85,92);doc.text(k,W-200,ry);doc.setTextColor(...ink);doc.text(v,W-50,ry,{align:"right"});ry+=18;});
+  }
+  doc.setFillColor(...header);doc.rect(W-230,ry-2,190,30,"F");
   doc.setTextColor(...gold);doc.setFont("helvetica","bold");doc.setFontSize(12);
   doc.text("TOTAL DUE",W-215,ry+17);doc.text(money(total,inv.currency),W-50,ry+17,{align:"right"});
 
-  // footer
+  // Footer
   const fy=doc.internal.pageSize.getHeight()-90;
   doc.setDrawColor(225,228,232);doc.line(40,fy,W-40,fy);
   doc.setTextColor(...mute);doc.setFont("helvetica","normal");doc.setFontSize(8);
-  doc.text(CO.bank,40,fy+18,{maxWidth:W-80});
+  doc.text(CO.bank,40,fy+18,{maxWidth:W*0.55});
   doc.text([CO.address,`${CO.email} · ${CO.phone}`,`${CO.reg}  ${CO.vat}`].join("\n"),40,fy+34);
-  doc.setTextColor(...gold);doc.setFontSize(9);doc.text("Thank you for your business.",W-40,fy+34,{align:"right"});
+  doc.setTextColor(...gold);doc.setFontSize(9);doc.text(footerMsg,W-40,fy+34,{align:"right"});
   return doc;
 }
 /* ============ CHARTS (Chart.js donut) ============ */

@@ -121,6 +121,13 @@ function canDo(action){
 
 (async()=>{
   ME=await requireRole("staff","login.html");if(!ME)return;
+  if(ME.kind==="timeout"){
+    /* Supabase free-tier cold start — show helpful message with auto-retry */
+    let _s=25;const _ri=setInterval(()=>{const b=document.getElementById("_htrc");if(!b)return clearInterval(_ri);b.textContent="Retry in "+_s+"s";if(--_s<0){clearInterval(_ri);location.reload();}},1000);
+    main.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;min-height:60vh"><div class="card" style="max-width:420px;text-align:center;padding:36px 32px"><p style="font-size:2rem;margin:0 0 12px">⏳</p><p style="font-weight:700;font-size:1.1rem;margin:0 0 10px">Database is waking up</p><p class="mute" style="margin:0 0 20px;line-height:1.6">Hornbill Tactical uses a free-tier database that sleeps during inactivity. The first load after a quiet period takes 30–60 seconds.</p><button id="_htrc" class="btn btn-primary" onclick="clearInterval(window._htri);location.reload()" style="min-width:160px">Retry in 25s</button></div></div>`;
+    window._htri=_ri;
+    return;
+  }
   applyOrgSettings();
   document.getElementById("whoPill").textContent=ME.profile.full_name+" · "+ME.profile.role;
   try{
@@ -138,6 +145,8 @@ function canDo(action){
   const firstView=(allowed&&allowed.length)?allowed[0]:"dashboard";
   nav(firstView);
 })();
+/* After 5s still showing spinner — hint that DB is waking up */
+setTimeout(()=>{const m=document.getElementById("main");if(m&&m.querySelector(".spin")){m.querySelector(".spin").insertAdjacentHTML("afterend","<p style=\"text-align:center;color:var(--mute);font-size:.85rem;margin-top:16px\">Connecting to database…</p>");}},5000);
 const staffName=id=>STAFF.find(s=>s.id===id)?.full_name||"Unassigned";
 const clientName=id=>CLIENTS.find(c=>c.id===id)?.name||"—";
 const views={};

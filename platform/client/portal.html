@@ -58,6 +58,12 @@ function close_(){document.getElementById("drawer").classList.remove("show");}
 
 (async()=>{
   ME=await requireRole("client","login.html");if(!ME)return;
+  if(ME.kind==="timeout"){
+    let _s=25;const _ri=setInterval(()=>{const b=document.getElementById("_htrc");if(!b)return clearInterval(_ri);b.textContent="Retry in "+_s+"s";if(--_s<0){clearInterval(_ri);location.reload();}},1000);
+    main.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;min-height:60vh"><div class="card" style="max-width:420px;text-align:center;padding:36px 32px"><p style="font-size:2rem;margin:0 0 12px">⏳</p><p style="font-weight:700;font-size:1.1rem;margin:0 0 10px">Database is waking up</p><p class="mute" style="margin:0 0 20px;line-height:1.6">The client portal uses a free-tier database that sleeps during inactivity. The first load after a quiet period takes 30–60 seconds.</p><button id="_htrc" class="btn btn-primary" onclick="clearInterval(window._htri);location.reload()" style="min-width:160px">Retry in 25s</button></div></div>`;
+    window._htri=_ri;
+    return;
+  }
   applyOrgSettings();
   CLIENT=ME.client;
   nav("dashboard");
@@ -68,11 +74,11 @@ const views={};
 /* ---------- DASHBOARD ---------- */
 views.dashboard=async()=>{
   main.innerHTML='<div class="spin"></div>';
-  const [{data:inc},{data:invs},{data:updates}]=await Promise.all([
+  const [{data:inc},{data:invs},{data:updates}]=await Promise.race([Promise.all([
     sb.from("incidents").select("id,reference,incident_type,status,source,created_at").order("created_at",{ascending:false}),
     sb.from("invoices").select("amount,status"),
     sb.from("incident_updates").select("body,created_at,author_label,visibility,incidents(reference)").order("created_at",{ascending:false}).limit(6),
-  ]);
+  ]),new Promise((_,r)=>setTimeout(()=>r(new Error('Dashboard timed out')),15000))]);
   const c=s=>inc.filter(i=>i.status===s).length;
   const open=inc.filter(i=>!["resolved","closed"].includes(i.status)).length;
   const out=invs.filter(i=>i.status==="outstanding").reduce((a,b)=>a+ +b.amount,0);

@@ -124,10 +124,10 @@ function canDo(action){
   applyOrgSettings();
   document.getElementById("whoPill").textContent=ME.profile.full_name+" · "+ME.profile.role;
   try{
-    const [{data:st},{data:cl}]=await Promise.all([
+    const [{data:st},{data:cl}]=await Promise.race([Promise.all([
       sb.from("profiles").select("*").order("full_name"),
       sb.from("clients").select("*").order("name"),
-    ]);
+    ]),new Promise((_,r)=>setTimeout(()=>r(new Error('Init timeout')),10000))]);
     STAFF=st||[];CLIENTS=cl||[];
   }catch(e){
     // Graceful fallback — DB query failed (e.g. during migration); continue with empty caches
@@ -146,11 +146,11 @@ const views={};
 views.dashboard=async()=>{
   main.innerHTML='<div class="spin"></div>';
   try{
-  const [{data:_inc},{data:_invs},{data:_tasks}]=await Promise.all([
+  const [{data:_inc},{data:_invs},{data:_tasks}]=await Promise.race([Promise.all([
     sb.from("incidents").select("id,reference,incident_type,status,source,client_id,urgency,created_at").order("created_at",{ascending:false}),
     sb.from("invoices").select("amount,status"),
     sb.from("tasks").select("id,status,is_client_request"),
-  ]);
+  ]),new Promise((_,r)=>setTimeout(()=>r(new Error('Dashboard timed out — check your Supabase connection')),10000))]);
   const inc=_inc||[],invs=_invs||[],tasks=_tasks||[];
   const c=s=>inc.filter(i=>i.status===s).length;
   const bySrc=s=>inc.filter(i=>i.source===s).length;

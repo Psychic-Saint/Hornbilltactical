@@ -318,7 +318,7 @@ async function openIncident(id){
       <div style="margin-top:14px">${(updates||[]).map(u=>`<div class="note-card ${u.visibility==='client'?'note-client':'note-internal'}">
         <div class="who"><span class="note-tag" style="color:${u.visibility==='client'?'var(--info)':'var(--gold)'}">${u.visibility==='client'?'CLIENT UPDATE':'INTERNAL NOTE'}</span><span>${fmtDateTime(u.created_at)}</span></div>
         ${esc(u.body)}<div style="margin-top:4px"><small>${esc(u.author_label||"")}</small></div></div>`).join("")||'<p class="mute" style="font-size:.9rem">No updates yet.</p>'}</div>
-    </div>
+    </div>`:''}
 
     <div class="card"><h3 style="margin-top:0">Status history</h3><div class="timeline">${buildTimeline(hist||[])}</div></div>
   </div>`;
